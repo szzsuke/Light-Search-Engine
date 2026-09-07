@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
+from functools import lru_cache
 from typing import Dict, List
 
 import config
@@ -81,6 +82,7 @@ class GeminiAI:
     # ------------------------------------------------------------------
     # 5.1 Spell check
     # ------------------------------------------------------------------
+    @lru_cache(maxsize=1024)
     def spell_check(self, query: str) -> str:
         """Corrects spelling/grammar in a search query using Gemini."""
         if not query or not query.strip():

@@ -2,10 +2,10 @@
 search_engine.py
 =================
 SOUL Search Engine Core Orchestrator:
-- Query normalization and spell checking (Gemini AI).
-- Dual-channel real-time web retrieval (Live Web + Reddit/Community Discussions via DDGS).
+- Ultra-fast concurrent multi-engine retrieval (DuckDuckGo + Brave fast backends).
+- Parallel Knowledge Graph (DuckDuckGo Instant Answer) & AI Spell Checking.
 - Smart Relevance & Community Reranker (+45% authentic discussion boost, title-match bonus).
-- DuckDuckGo Instant Answer / Knowledge Graph integration.
+- In-memory fast LRU cache for instant repeated search delivery.
 - 100% standalone — zero crawler or local database needed.
 """
 
@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Dict, List
+import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from typing import Any, Dict, List, Tuple
 from urllib.parse import urlparse
 
 from ddgs import DDGS
@@ -25,19 +27,71 @@ from gemini_ai import gemini_ai
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Shared persistent thread pool for low-latency concurrent retrieval
+_EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="soul_search")
+
+# In-memory query result cache: (query_norm, mode, top_n) -> (timestamp, result_dict)
+_QUERY_CACHE: Dict[Tuple[str, str, int], Tuple[float, Dict[str, Any]]] = {}
+_CACHE_TTL_SECONDS = 900  # 15 minutes cache lifetime
+_MAX_CACHE_ENTRIES = 512
+
+
+def _get_from_cache(query: str, mode: str, top_n: int) -> Dict[str, Any] | None:
+    key = (query.strip().lower(), mode, top_n)
+    if key in _QUERY_CACHE:
+        ts, data = _QUERY_CACHE[key]
+        if time.time() - ts < _CACHE_TTL_SECONDS:
+            logger.info("Cache hit for query: '%s' [%s]", query, mode)
+            return data
+        else:
+            del _QUERY_CACHE[key]
+    return None
+
+
+def _put_in_cache(query: str, mode: str, top_n: int, data: Dict[str, Any]) -> None:
+    if len(_QUERY_CACHE) >= _MAX_CACHE_ENTRIES:
+        # Evict oldest 20%
+        oldest_keys = sorted(_QUERY_CACHE.keys(), key=lambda k: _QUERY_CACHE[k][0])[:100]
+        for k in oldest_keys:
+            _QUERY_CACHE.pop(k, None)
+    key = (query.strip().lower(), mode, top_n)
+    _QUERY_CACHE[key] = (time.time(), data)
+
+
+def _safe_ddgs_search(query: str, max_results: int) -> List[Dict[str, Any]]:
+    """Fetches web results using direct fast backends (DuckDuckGo + Brave) with fallback."""
+    try:
+        # Direct fast backends bypass rate-limited engine cascades
+        results = list(DDGS(timeout=4).text(query, backend="duckduckgo,brave", max_results=max_results))
+        if results:
+            return results
+    except Exception as exc:
+        logger.warning("Fast backend search error for '%s': %s", query, exc)
+
+    # Fallback to standard auto-backend if specific backends fail
+    try:
+        return list(DDGS(timeout=4).text(query, max_results=max_results))
+    except Exception as exc:
+        logger.warning("Fallback DDGS search error for '%s': %s", query, exc)
+        return []
+
 
 class SearchEngine:
-    """Orchestrates live web search, spelling correction, and knowledge graphs."""
+    """Orchestrates live web search, spelling correction, and knowledge graphs with concurrent retrieval."""
 
     def search(self, query: str, top_n: int = config.DEFAULT_TOP_N, mode: str = "all") -> Dict[str, Any]:
-        """Executes a full live web search pipeline for a user query.
+        """Executes an ultra-fast live web search pipeline for a user query.
 
         Steps:
-            1. Spell-check query via Gemini Flash.
-            2. Dual-channel retrieval: fetches live web results + community discussions.
+            1. Check in-memory result cache.
+            2. Concurrently dispatch:
+               - Web search (DuckDuckGo + Brave fast backends)
+               - Reddit/community discussions search
+               - Knowledge Graph (Instant Answer)
+               - AI Spell check (Gemini Flash with fast-path timeout)
             3. Smart Reranker: boosts authentic human discussions (Reddit, GitHub, HN),
                evaluates title-match relevance, and penalizes SEO spam.
-            4. Retrieves DuckDuckGo Knowledge Panel and entity pivot nodes.
+            4. Returns blended, ranked results + knowledge panel.
 
         Args:
             query: The raw user search query.
@@ -58,49 +112,73 @@ class SearchEngine:
                 "results": [],
             }
 
-        # Step 1: Spell check with Gemini Flash
-        corrected_query = gemini_ai.spell_check(query)
+        # Check Cache
+        cached = _get_from_cache(original_query, mode, top_n)
+        if cached:
+            return cached
 
-        # Step 2: Dual-Channel Live Web & Community Retrieval
+        # Step 1: Concurrently dispatch search tasks
+        # - Knowledge Graph task
+        fut_kp = _EXECUTOR.submit(get_instant_answer, original_query)
+
+        # - AI Spell check task (runs in background with fast timeout)
+        fut_spell = _EXECUTOR.submit(gemini_ai.spell_check, original_query)
+
+        # - Web & Community retrieval tasks
         raw_candidates: List[Dict[str, Any]] = []
         seen_urls: set[str] = set()
 
-        query_tokens = [w.lower() for w in re.findall(r"\b[a-z0-9]+\b", corrected_query) if len(w) > 2]
+        if mode == "discussions":
+            search_q = f"{original_query} (site:reddit.com OR site:news.ycombinator.com OR site:github.com OR site:stackoverflow.com)"
+            fut_disc = _EXECUTOR.submit(_safe_ddgs_search, search_q, top_n + 5)
+            try:
+                for r in fut_disc.result(timeout=5.0):
+                    u = r.get("href", "")
+                    if u and u not in seen_urls:
+                        seen_urls.add(u)
+                        raw_candidates.append(r)
+            except Exception as exc:
+                logger.warning("Discussions retrieval error: %s", exc)
+        else:
+            # Mode == 'all': Parallel Dual-channel blend (General Web + Top Reddit Discussions)
+            fut_web = _EXECUTOR.submit(_safe_ddgs_search, original_query, top_n + 5)
+            fut_reddit = _EXECUTOR.submit(_safe_ddgs_search, f"{original_query} site:reddit.com", 4)
 
+            try:
+                for r in fut_web.result(timeout=5.0):
+                    u = r.get("href", "")
+                    if u and u not in seen_urls:
+                        seen_urls.add(u)
+                        raw_candidates.append(r)
+            except Exception as exc:
+                logger.warning("Web retrieval error: %s", exc)
+
+            try:
+                for r in fut_reddit.result(timeout=5.0):
+                    u = r.get("href", "")
+                    if u and u not in seen_urls:
+                        seen_urls.add(u)
+                        raw_candidates.append(r)
+            except Exception as exc:
+                logger.warning("Reddit retrieval error: %s", exc)
+
+        # Step 2: Resolve Knowledge Panel (non-blocking if finished)
+        knowledge_panel = None
         try:
-            if mode == "discussions":
-                # Pure human community mode
-                search_q = f"{corrected_query} (site:reddit.com OR site:news.ycombinator.com OR site:github.com OR site:stackoverflow.com)"
-                raw_ddg = list(DDGS().text(search_q, max_results=top_n + 5))
-                for r in raw_ddg:
-                    u = r.get("href", "")
-                    if u and u not in seen_urls:
-                        seen_urls.add(u)
-                        raw_candidates.append(r)
-            else:
-                # Mode == 'all': Dual-channel blend (General Web + Top Reddit Discussions)
-                web_results = list(DDGS().text(corrected_query, max_results=top_n + 5))
-                for r in web_results:
-                    u = r.get("href", "")
-                    if u and u not in seen_urls:
-                        seen_urls.add(u)
-                        raw_candidates.append(r)
-
-                # Fetch authentic Reddit discussions
-                try:
-                    reddit_results = list(DDGS().text(f"{corrected_query} site:reddit.com", max_results=4))
-                    for r in reddit_results:
-                        u = r.get("href", "")
-                        if u and u not in seen_urls:
-                            seen_urls.add(u)
-                            raw_candidates.append(r)
-                except Exception:
-                    pass
-
+            knowledge_panel = fut_kp.result(timeout=1.5)
         except Exception as exc:
-            logger.warning("Live web search error: %s", exc)
+            logger.debug("Knowledge panel retrieval timeout or error: %s", exc)
 
-        # Step 3: Smart Reranker: Title Relevance + Community Factor + Spam Demotion
+        # Step 3: Resolve Spell Check (non-blocking if finished within 0.8s)
+        corrected_query = original_query
+        try:
+            corrected_query = fut_spell.result(timeout=0.8)
+        except (TimeoutError, Exception):
+            # Do not block the user if Gemini is slow
+            corrected_query = original_query
+
+        # Step 4: Smart Reranker: Title Relevance + Community Factor + Spam Demotion
+        query_tokens = [w.lower() for w in re.findall(r"\b[a-z0-9]+\b", original_query) if len(w) > 2]
         scored_results: List[Dict[str, Any]] = []
 
         for rank_idx, r in enumerate(raw_candidates, start=1):
@@ -144,10 +222,7 @@ class SearchEngine:
 
         final_results = scored_results[:top_n]
 
-        # Step 4: DuckDuckGo Instant Answer Knowledge Panel
-        knowledge_panel = get_instant_answer(corrected_query)
-
-        return {
+        result_payload = {
             "original_query": original_query,
             "corrected_query": corrected_query,
             "ai_summary": "",
@@ -155,6 +230,12 @@ class SearchEngine:
             "total_results": len(final_results),
             "results": final_results,
         }
+
+        # Cache valid results
+        if final_results:
+            _put_in_cache(original_query, mode, top_n, result_payload)
+
+        return result_payload
 
 
 # Module-level singleton for convenient importing elsewhere.
