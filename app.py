@@ -2,7 +2,7 @@
 app.py
 ======
 Flask web application exposing:
-  - GET /        A clean, basic HTML search page (minimal HTML structure, no bloated frontend).
+  - GET /        A 100% raw, basic HTML search page (zero CSS, zero scripts, basic search box).
   - GET /search  A JSON API returning the search response schema.
   - GET /api/reader  Clean reader view endpoint.
   - GET /api/knowledge Instant answer knowledge graph endpoint.
@@ -31,7 +31,7 @@ def add_cors_headers(response: Response) -> Response:
 
 
 def render_page(search_result: Dict[str, Any] | None = None) -> str:
-    """Builds a basic, clean HTML search interface with zero bloated frontend."""
+    """Builds a 100% raw, basic HTML search interface with zero CSS."""
     query_value = ""
     results_html = ""
     knowledge_html = ""
@@ -46,7 +46,7 @@ def render_page(search_result: Dict[str, Any] | None = None) -> str:
         if corrected and corrected.lower() != query_value.lower():
             corrected_banner = f'<p>Did you mean: <a href="/?q={corrected}"><strong>{corrected}</strong></a></p>'
 
-        # Knowledge Panel (Basic HTML block)
+        # Knowledge Panel (Pure basic HTML)
         if kp:
             kp_heading = escape(kp.get("heading", ""))
             kp_abstract = escape(kp.get("abstract", ""))
@@ -54,16 +54,17 @@ def render_page(search_result: Dict[str, Any] | None = None) -> str:
             kp_source = escape(kp.get("source", "Wikipedia"))
             kp_url = escape(kp.get("source_url", ""))
 
-            img_tag = f'<p><img src="{kp_img}" alt="{kp_heading}" style="max-width:220px; height:auto;" /></p>' if kp_img else ""
-            source_link = f'<p><a href="{kp_url}" target="_blank" rel="noopener noreferrer">Source: {kp_source} &rarr;</a></p>' if kp_url else ""
+            img_tag = f'<p><img src="{kp_img}" alt="{kp_heading}"></p>' if kp_img else ""
+            source_link = f'<p><a href="{kp_url}" target="_blank" rel="noopener noreferrer">Source: {kp_source}</a></p>' if kp_url else ""
 
             knowledge_html = f"""
-            <aside style="border: 1px solid #ccc; padding: 12px; margin: 15px 0;">
+            <aside>
                 <h2>{kp_heading}</h2>
                 {img_tag}
                 <p>{kp_abstract}</p>
                 {source_link}
             </aside>
+            <hr>
             """
 
         # Search Results
@@ -77,7 +78,7 @@ def render_page(search_result: Dict[str, Any] | None = None) -> str:
                 snippet_escaped = escape(r["snippet"])
 
                 items_html += f"""
-                <li style="margin-bottom: 16px;">
+                <li>
                     <h3><a href="{url_escaped}" target="_blank" rel="noopener noreferrer">{title_escaped}</a></h3>
                     <small>{domain_escaped} - <a href="{url_escaped}" target="_blank" rel="noopener noreferrer">{url_escaped}</a></small>
                     <p>{snippet_escaped}</p>
@@ -95,13 +96,13 @@ def render_page(search_result: Dict[str, Any] | None = None) -> str:
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="referrer" content="no-referrer">
-  <title>{query_value + " - " if query_value else ""}SOUL Search</title>
+  <title>{query_value + " - " if query_value else ""}Search</title>
 </head>
-<body style="font-family: sans-serif; max-width: 800px; margin: 20px auto; padding: 0 15px; line-height: 1.5;">
-  <h1><a href="/" style="text-decoration: none; color: inherit;">SOUL Search</a></h1>
+<body>
+  <h1><a href="/">Search</a></h1>
   <form action="/" method="get">
-    <input type="text" name="q" value="{query_value}" placeholder="Search..." style="font-size: 1rem; padding: 6px 10px; width: 70%;" autofocus required />
-    <button type="submit" style="font-size: 1rem; padding: 6px 14px; cursor: pointer;">Search</button>
+    <input type="text" name="q" value="{query_value}" autofocus required>
+    <button type="submit">Search</button>
   </form>
   {corrected_banner}
   {results_html}
@@ -112,7 +113,7 @@ def render_page(search_result: Dict[str, Any] | None = None) -> str:
 
 @app.route("/", methods=["GET"])
 def index() -> Response:
-    """Serves the clean basic HTML search page, running a search if `q` is present."""
+    """Serves the raw basic HTML search page, running a search if `q` is present."""
     query = request.args.get("q", "").strip()
     result = None
     if query:
