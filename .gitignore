@@ -24,7 +24,7 @@ dist/
 *.jpeg
 *.png
 *.txt
-!requirements.txt
+requirements.txt
 *.md.bak
 README (1).md
 
