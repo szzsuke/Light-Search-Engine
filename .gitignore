@@ -1,0 +1,35 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments & Keys
+.env
+.venv
+env/
+venv/
+ENV/
+setup_env.ps1
+
+# Node & Frontend dependencies
+frontend/node_modules/
+frontend/dist/
+node_modules/
+dist/
+.oxlintrc.json
+
+# Media & Temporary files
+*.mp3
+*.jpg
+*.jpeg
+*.png
+*.txt
+!requirements.txt
+*.md.bak
+README (1).md
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
