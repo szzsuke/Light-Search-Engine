@@ -34,6 +34,7 @@ GEMINI_MODEL_NAME: str = os.getenv("GEMINI_MODEL_NAME", "gemini-3.6-flash")
 # ---------------------------------------------------------------------------
 MAX_TOTAL_PAGES: int = int(os.getenv("MAX_TOTAL_PAGES", "120000"))
 MAX_WORKERS: int = 12
+MAX_PAGES_PER_DOMAIN: int = int(os.getenv("MAX_PAGES_PER_DOMAIN", "150")) # Enforces genre/domain diversity per run
 RATE_LIMIT_SECONDS: float = 1.0  # seconds between requests to the same domain
 REQUEST_TIMEOUT: int = 10  # seconds
 MAX_CONTENT_LENGTH_BYTES: int = 5_000_000  # skip pages larger than ~5MB
@@ -120,9 +121,93 @@ WEIGHT_TFIDF: float = 0.40      # Backward compatibility
 WEIGHT_AI_RELEVANCE: float = 0.05
 
 # ---------------------------------------------------------------------------
-# Multi-Domain Target Seed URLs (Entertainment, Cars, Reddit, Education, Tech, Science)
+# Multi-Genre Universal Target Seed URLs
+# Covers: News, Tech, Science, Medicine, Finance, Food, Travel, Education,
+# Sports, Books, Automotive, Gaming, Culture, and Philosophy.
 # ---------------------------------------------------------------------------
 TARGET_SITES = [
+    # --- World News & Journalism ---
+    "https://www.reuters.com",
+    "https://apnews.com",
+    "https://www.bbc.com/news",
+    "https://www.theguardian.com/international",
+    "https://www.npr.org",
+    "https://www.aljazeera.com",
+    "https://news.ycombinator.com",
+
+    # --- Technology, AI & Coding ---
+    "https://arstechnica.com",
+    "https://techcrunch.com",
+    "https://www.theverge.com",
+    "https://www.wired.com",
+    "https://www.engadget.com",
+    "https://github.com",
+    "https://stackoverflow.com",
+    "https://developer.mozilla.org",
+    "https://www.python.org",
+    "https://dev.to",
+
+    # --- Science, Space & Medicine ---
+    "https://www.nature.com",
+    "https://www.scientificamerican.com",
+    "https://www.sciencedaily.com",
+    "https://phys.org",
+    "https://www.nasa.gov",
+    "https://www.space.com",
+    "https://arxiv.org",
+    "https://www.mayoclinic.org",
+    "https://www.webmd.com",
+    "https://www.healthline.com",
+
+    # --- Business, Finance & Economics ---
+    "https://www.investopedia.com",
+    "https://www.bloomberg.com",
+    "https://www.cnbc.com",
+    "https://www.forbes.com",
+    "https://finance.yahoo.com",
+    "https://www.economist.com",
+
+    # --- Education, History & Philosophy ---
+    "https://en.wikipedia.org/wiki/Portal:Contents",
+    "https://en.wikipedia.org/wiki/Portal:Science",
+    "https://en.wikipedia.org/wiki/Portal:History",
+    "https://simple.wikipedia.org",
+    "https://www.britannica.com",
+    "https://www.khanacademy.org",
+    "https://ocw.mit.edu",
+    "https://www.coursera.org",
+    "https://plato.stanford.edu",
+    "https://www.worldhistory.org",
+    "https://www.nationalgeographic.com",
+
+    # --- Food, Cooking & Recipes ---
+    "https://www.allrecipes.com",
+    "https://www.seriouseats.com",
+    "https://www.foodnetwork.com",
+    "https://www.simplyrecipes.com",
+    "https://www.bonappetit.com",
+    "https://www.epicurious.com",
+
+    # --- Travel, Geography & Adventure ---
+    "https://www.lonelyplanet.com",
+    "https://www.tripadvisor.com",
+    "https://www.atlasobscura.com",
+    "https://www.travelandleisure.com",
+
+    # --- Books, Literature & Arts ---
+    "https://www.goodreads.com",
+    "https://www.gutenberg.org",
+    "https://lithub.com",
+    "https://www.poetryfoundation.org",
+    "https://www.artsy.net",
+
+    # --- Sports, Fitness & Athletics ---
+    "https://www.espn.com",
+    "https://www.bbc.com/sport",
+    "https://bleacherreport.com",
+    "https://theathletic.com",
+    "https://www.bodybuilding.com",
+
     # --- Cars & Automotive ---
     "https://www.caranddriver.com",
     "https://www.motortrend.com",
@@ -131,76 +216,22 @@ TARGET_SITES = [
     "https://jalopnik.com",
     "https://www.motor1.com",
     "https://www.autocar.co.uk",
-    "https://www.edmunds.com",
     "https://en.wikipedia.org/wiki/Portal:Cars",
-    "https://en.wikipedia.org/wiki/Car",
 
-    # --- Reddit Communities ---
-    "https://old.reddit.com/r/cars",
-    "https://old.reddit.com/r/technology",
-    "https://old.reddit.com/r/science",
-    "https://old.reddit.com/r/education",
-    "https://old.reddit.com/r/AskReddit",
-    "https://old.reddit.com/r/gaming",
-    "https://old.reddit.com/r/anime",
-    "https://old.reddit.com/r/movies",
-    "https://old.reddit.com/r/Music",
-    "https://old.reddit.com/r/books",
-
-    # --- Education, Science & Knowledge ---
-    "https://en.wikipedia.org/wiki/Portal:Contents",
-    "https://en.wikipedia.org/wiki/Portal:Science",
-    "https://en.wikipedia.org/wiki/Portal:Technology",
-    "https://simple.wikipedia.org",
-    "https://www.khanacademy.org",
-    "https://ocw.mit.edu",
-    "https://www.coursera.org",
-    "https://www.edx.org",
-    "https://www.britannica.com",
-    "https://www.sciencedaily.com",
-    "https://phys.org",
-    "https://www.nature.com",
-    "https://www.scientificamerican.com",
-    "https://www.nationalgeographic.com",
-    "https://plato.stanford.edu",
-    "https://www.geeksforgeeks.org",
-    "https://w3schools.com",
-    "https://developer.mozilla.org",
-
-    # --- Technology & Innovation ---
-    "https://arstechnica.com",
-    "https://techcrunch.com",
-    "https://www.theverge.com",
-    "https://www.wired.com",
-    "https://www.engadget.com",
-
-    # --- Entertainment, Anime, Movies & Music ---
-    "https://myanimelist.net",
-    "https://www.crunchyroll.com",
-    "https://www.animenewsnetwork.com",
-    "https://anilist.co",
-    "https://www.rottentomatoes.com",
-    "https://letterboxd.com",
-    "https://www.themoviedb.org",
-    "https://www.metacritic.com",
-    "https://open.spotify.com",
-    "https://genius.com",
-    "https://www.allmusic.com",
-    "https://www.discogs.com",
-    "https://pitchfork.com",
-    "https://www.billboard.com",
-    "https://variety.com",
-    "https://www.hollywoodreporter.com",
-    "https://deadline.com",
+    # --- Gaming & Entertainment ---
     "https://www.ign.com",
     "https://www.gamespot.com",
     "https://www.polygon.com",
     "https://kotaku.com",
-    "https://collider.com",
-    "https://rateyourmusic.com",
-    "https://www.nme.com",
+    "https://www.pcgamer.com",
+    "https://www.rottentomatoes.com",
+    "https://letterboxd.com",
+    "https://www.themoviedb.org",
+    "https://www.metacritic.com",
+    "https://pitchfork.com",
+    "https://www.billboard.com",
+    "https://variety.com",
+    "https://myanimelist.net",
+    "https://www.animenewsnetwork.com",
     "https://tvtropes.org",
-    "https://www.behindthevoiceactors.com",
-    "https://soundcloud.com",
-    "https://bandcamp.com",
 ]

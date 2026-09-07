@@ -18,8 +18,10 @@ import argparse
 import datetime
 import logging
 import os
+import random
 import sys
 import time
+from collections import defaultdict
 from urllib.parse import urlparse
 from pymongo import MongoClient
 
@@ -36,7 +38,7 @@ logger = logging.getLogger("daily_pipeline")
 
 
 def get_expansion_seeds(needed_count: int, client: MongoClient) -> tuple[list[str], set[str]]:
-    """Gathers fresh unvisited seed URLs and discovered outlinks efficiently."""
+    """Gathers fresh unvisited seed URLs across all web genres with domain diversity."""
     db = client[config.MONGO_DB_NAME]
     pages_col = db[config.COLLECTION_RAW_PAGES]
 
@@ -44,41 +46,51 @@ def get_expansion_seeds(needed_count: int, client: MongoClient) -> tuple[list[st
     visited = set(doc["url"] for doc in pages_col.find({}, {"url": 1}))
     logger.info("Total visited pages in database: %d", len(visited))
 
-    # 1. Primary seeds from TARGET_SITES
+    # 1. Primary multi-genre seeds from TARGET_SITES
     primary_seeds: list[str] = []
     for site in config.TARGET_SITES:
         canon = canonicalize_url(site)
         if canon not in visited:
             primary_seeds.append(canon)
-    logger.info("Found %d unvisited primary seed domains.", len(primary_seeds))
+    logger.info("Found %d unvisited primary multi-genre seeds.", len(primary_seeds))
 
-    # 2. Extract discovered outlinks matching target domains
-    target_domains = tuple(
-        urlparse(site).netloc.lower().replace("www.", "")
-        for site in config.TARGET_SITES
-    )
-
-    # We need roughly 2x the target count in candidate outlinks
+    # 2. Extract discovered outlinks across the ENTIRE web, enforcing domain diversity
     max_candidates = max(needed_count * 2, 50000)
     discovered_seeds: list[str] = []
+    domain_seed_counts: dict[str, int] = defaultdict(int)
 
-    logger.info("Scanning existing page outlinks for target domain expansion...")
+    logger.info("Scanning existing outlinks across all genres on the web...")
     cursor = pages_col.find({}, {"links": 1}).batch_size(1000)
 
     for doc in cursor:
         links = doc.get("links", [])
         for link in links:
-            # Fast substring pre-check before expensive parsing
-            if any(domain in link for domain in target_domains):
-                canon = canonicalize_url(link)
-                if canon not in visited:
-                    discovered_seeds.append(canon)
-                    if len(discovered_seeds) >= max_candidates:
-                        break
+            if not link or not link.startswith(("http://", "https://")):
+                continue
+            parsed_domain = urlparse(link).netloc.lower().replace("www.", "")
+            if not parsed_domain or "." not in parsed_domain:
+                continue
+
+            # Cap seeds per domain to 25 to guarantee wide diversity across hundreds of genres/sites
+            if domain_seed_counts[parsed_domain] >= 25:
+                continue
+
+            canon = canonicalize_url(link)
+            if canon not in visited:
+                discovered_seeds.append(canon)
+                domain_seed_counts[parsed_domain] += 1
+                if len(discovered_seeds) >= max_candidates:
+                    break
         if len(discovered_seeds) >= max_candidates:
             break
 
-    logger.info("Gathered %d candidate expansion seeds.", len(discovered_seeds))
+    # Shuffle seeds so workers hit multiple different domains/genres simultaneously
+    random.shuffle(discovered_seeds)
+    logger.info(
+        "Gathered %d candidate expansion seeds across %d distinct domains and genres.",
+        len(discovered_seeds),
+        len(domain_seed_counts),
+    )
     combined_seeds = primary_seeds + discovered_seeds
     return combined_seeds, visited
 

@@ -19,7 +19,7 @@ import re
 import threading
 import time
 import urllib.robotparser as robotparser
-from collections import deque
+from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Deque, Dict, List, Optional, Set
@@ -159,6 +159,8 @@ class Crawler:
         self.max_pages = max_pages
         self.visited: Set[str] = set()
         self._visited_lock = threading.Lock()
+        self._domain_counts: Dict[str, int] = defaultdict(int)
+        self._domain_lock = threading.Lock()
         self._pages_crawled = 0
         self._counter_lock = threading.Lock()
         self.rate_limiter = RateLimiter()
@@ -235,6 +237,11 @@ class Crawler:
         if not is_crawlable_url(url):
             return []
 
+        domain = urlparse(url).netloc.lower()
+        with self._domain_lock:
+            if config.MAX_PAGES_PER_DOMAIN > 0 and self._domain_counts[domain] >= config.MAX_PAGES_PER_DOMAIN:
+                return []
+
         user_agent = random.choice(config.USER_AGENTS)
 
         try:
@@ -291,6 +298,8 @@ class Crawler:
             with self._counter_lock:
                 self._pages_crawled += 1
                 count = self._pages_crawled
+            with self._domain_lock:
+                self._domain_counts[domain.lower()] += 1
             logger.info("Crawled [%d] pages | Current: %s", count, url)
 
         return links
