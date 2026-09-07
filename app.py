@@ -106,12 +106,12 @@ def render_page(search_result: Dict[str, Any] | None = None, mode: str = "all") 
                     <span class="url-breadcrumb">{url_escaped[:50]}...</span>
                 </div>
                 <h3 class="result-title">
-                    <a href="{url_escaped}" target="_blank">{title_escaped}</a>
+                    <a href="{url_escaped}" target="_blank" rel="noopener noreferrer">{title_escaped}</a>
                 </h3>
                 <p class="result-snippet">{snippet_escaped}</p>
                 <div class="result-actions">
                     <button class="btn-read" onclick="openReader('{url_escaped}')">📖 Quick Read</button>
-                    <a href="{url_escaped}" target="_blank" class="btn-visit">Visit Link &rarr;</a>
+                    <a href="{url_escaped}" target="_blank" rel="noopener noreferrer" class="btn-visit">Visit Link &rarr;</a>
                 </div>
             </div>
             """
@@ -134,6 +134,7 @@ def render_page(search_result: Dict[str, Any] | None = None, mode: str = "all") 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
   <title>{query_value + " - " if query_value else ""}SOUL Search</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
