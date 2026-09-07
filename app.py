@@ -34,12 +34,13 @@ def add_cors_headers(response: Response) -> Response:
     return response
 
 
-def render_page(search_result: Dict[str, Any] | None = None) -> str:
+def render_page(search_result: Dict[str, Any] | None = None, mode: str = "all") -> str:
     """Builds the modern SOUL search interface with Knowledge Panel and Clean Reader."""
     query_value = ""
     results_html = ""
     knowledge_html = ""
     corrected_banner = ""
+    tabs_html = ""
 
     if search_result is not None:
         query_value = escape(search_result.get("original_query", ""))
@@ -47,10 +48,18 @@ def render_page(search_result: Dict[str, Any] | None = None) -> str:
         total = search_result.get("total_results", 0)
         kp = search_result.get("knowledge_panel")
 
+        if query_value:
+            tabs_html = f"""
+            <div class="tabs">
+                <a href="/?q={query_value}&mode=all" class="tab {'active' if mode == 'all' else ''}">🌐 All (Smart Ranked)</a>
+                <a href="/?q={query_value}&mode=discussions" class="tab {'active' if mode == 'discussions' else ''}">💬 Discussions & Reddit</a>
+            </div>
+            """
+
         if corrected and corrected.lower() != query_value.lower():
             corrected_banner = f"""
             <div class="corrected-banner">
-                Did you mean: <a href="/?q={corrected}"><strong>{corrected}</strong></a>
+                Did you mean: <a href="/?q={corrected}&mode={mode}"><strong>{corrected}</strong></a>
             </div>
             """
 
@@ -328,6 +337,33 @@ def render_page(search_result: Dict[str, Any] | None = None) -> str:
     .reader-body h1, .reader-body h2, .reader-body h3 {{ color: #fff; margin: 24px 0 12px 0; }}
     .reader-meta {{ font-size: 0.85rem; color: var(--muted); margin-bottom: 12px; }}
     .reader-image {{ max-width: 100%; border-radius: 10px; margin: 15px 0; }}
+    .tabs {{
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 25px;
+    }}
+    .tab {{
+      padding: 7px 16px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: all 0.2s;
+    }}
+    .tab:hover {{
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }}
+    .tab.active {{
+      background: var(--accent-grad);
+      color: #fff;
+      border-color: transparent;
+      box-shadow: 0 4px 15px rgba(255, 75, 43, 0.3);
+    }}
   </style>
 </head>
 <body>
@@ -340,6 +376,7 @@ def render_page(search_result: Dict[str, Any] | None = None) -> str:
       <input type="text" name="q" value="{query_value}" placeholder="Search the web, news, code, or knowledge..." class="search-input" autofocus required>
       <button type="submit" class="search-btn">Search</button>
     </form>
+    {tabs_html}
     {corrected_banner}
     {results_html}
   </div>
@@ -392,16 +429,13 @@ def render_page(search_result: Dict[str, Any] | None = None) -> str:
 
 @app.route("/", methods=["GET"])
 def index() -> Response:
-    """Serves the basic HTML search page, running a search if `q` is present.
-
-    Returns:
-        A Flask Response containing raw HTML with no CSS or JavaScript.
-    """
+    """Serves the SOUL search page, running a search if `q` is present."""
     query = request.args.get("q", "").strip()
+    mode = request.args.get("mode", "all").strip()
     result = None
     if query:
-        result = search_engine.search(query, top_n=10)
-    return Response(render_page(result), mimetype="text/html")
+        result = search_engine.search(query, top_n=12, mode=mode)
+    return Response(render_page(result, mode=mode), mimetype="text/html")
 
 
 @app.route("/search", methods=["GET"])
@@ -412,6 +446,7 @@ def search_api() -> Response:
     Query params:
         q: The search query (required).
         limit: Max number of results to return (default 10).
+        mode: Search mode ('all' or 'discussions').
 
     Returns:
         JSON with search results and DuckDuckGo knowledge panel.
@@ -420,13 +455,14 @@ def search_api() -> Response:
     if not query:
         return jsonify({"error": "Missing required query parameter 'q'."}), 400
 
+    mode = request.args.get("mode", "all").strip()
     try:
         limit = int(request.args.get("limit", 10))
     except ValueError:
         limit = 10
     limit = max(1, min(limit, 100))
 
-    result = search_engine.search(query, top_n=limit)
+    result = search_engine.search(query, top_n=limit, mode=mode)
     return jsonify(result)
 
 
