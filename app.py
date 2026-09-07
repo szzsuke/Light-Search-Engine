@@ -19,6 +19,8 @@ from typing import Any, Dict
 
 from flask import Flask, Response, jsonify, request
 
+from ddg_knowledge import get_instant_answer
+from reader import extract_clean_article
 from search_engine import search_engine
 
 app = Flask(__name__)
@@ -103,16 +105,16 @@ def index() -> Response:
 
 
 @app.route("/search", methods=["GET"])
+@app.route("/api/search", methods=["GET"])
 def search_api() -> Response:
-    """JSON API endpoint for programmatic search access.
+    """JSON API endpoint for search with BM25, PageRank, and DuckDuckGo Knowledge Panel.
 
     Query params:
         q: The search query (required).
         limit: Max number of results to return (default 10).
 
     Returns:
-        JSON matching the SearchEngine.search response schema. Returns
-        HTTP 400 if `q` is missing.
+        JSON with search results and DuckDuckGo knowledge panel.
     """
     query = request.args.get("q", "").strip()
     if not query:
@@ -126,6 +128,45 @@ def search_api() -> Response:
 
     result = search_engine.search(query, top_n=limit)
     return jsonify(result)
+
+
+@app.route("/api/reader", methods=["GET"])
+def clean_reader_api() -> Response:
+    """1-Click Clean Reader endpoint: strips ads, popups, and trackers for any URL.
+
+    Query params:
+        url: The web page URL to clean and read (required).
+
+    Returns:
+        JSON containing title, clean_html, word_count, and reading_time.
+    """
+    target_url = request.args.get("url", "").strip()
+    if not target_url:
+        return jsonify({"status": "error", "message": "Missing 'url' query parameter."}), 400
+
+    article = extract_clean_article(target_url)
+    return jsonify(article)
+
+
+@app.route("/api/knowledge", methods=["GET"])
+def knowledge_api() -> Response:
+    """DuckDuckGo Instant Answer / Knowledge Graph proxy endpoint.
+
+    Query params:
+        q: Entity query (required).
+
+    Returns:
+        JSON containing encyclopedic heading, abstract, hero image, and related topics.
+    """
+    query = request.args.get("q", "").strip()
+    if not query:
+        return jsonify({"status": "error", "message": "Missing 'q' query parameter."}), 400
+
+    data = get_instant_answer(query)
+    if not data:
+        return jsonify({"status": "not_found", "message": "No entity match found."}), 404
+
+    return jsonify({"status": "success", "data": data})
 
 
 if __name__ == "__main__":

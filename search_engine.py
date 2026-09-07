@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 import config
 from database import db
+from ddg_knowledge import get_instant_answer
 from gemini_ai import gemini_ai
 from indexer import indexer
 
@@ -144,10 +145,14 @@ class SearchEngine:
 
         db.log_search(original_query, corrected_query, len(final_results))
 
+        # DuckDuckGo Instant Answer Knowledge Panel
+        knowledge_panel = get_instant_answer(corrected_query)
+
         return {
             "original_query": original_query,
             "corrected_query": corrected_query,
             "ai_summary": ai_summary,
+            "knowledge_panel": knowledge_panel,
             "total_results": len(final_results),
             "results": final_results,
         }
