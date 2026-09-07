@@ -19,7 +19,6 @@ import requests
 from bs4 import BeautifulSoup
 
 import config
-from database import db
 
 logger = logging.getLogger("clean_reader")
 
@@ -50,40 +49,7 @@ def extract_clean_article(url: str) -> Dict[str, Any]:
     parsed = urlparse(url)
     domain = parsed.netloc.replace("www.", "")
 
-    # 1. Check local MongoDB cache first (instant sub-millisecond retrieval)
-    cached = db.get_page(url)
-    html = ""
-    title = ""
-    meta_desc = ""
-
-    if cached and cached.get("content"):
-        # We have local crawled content
-        title = cached.get("title", "")
-        meta_desc = cached.get("meta_description", "")
-        # If we stored raw html or plain content
-        raw_text = cached.get("content", "")
-        # Convert plain paragraphs into clean HTML paragraphs
-        paragraphs = [p.strip() for p in raw_text.split("\n") if len(p.strip()) > 30]
-        if not paragraphs:
-            paragraphs = [raw_text[:1500]]
-        
-        clean_html = "".join(f"<p>{p}</p>" for p in paragraphs)
-        word_count = len(raw_text.split())
-        reading_time = max(1, math.ceil(word_count / 200))
-
-        return {
-            "status": "success",
-            "url": url,
-            "domain": domain,
-            "title": title or domain,
-            "description": meta_desc,
-            "clean_html": clean_html,
-            "word_count": word_count,
-            "reading_time": f"{reading_time} min read",
-            "source": "cached",
-        }
-
-    # 2. Live Fetch (if not cached locally)
+    # Live Fetch with clean headers and timeout
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
