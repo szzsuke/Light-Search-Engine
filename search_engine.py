@@ -3,9 +3,11 @@ search_engine.py
 =================
 SOUL Search Engine Core Orchestrator:
 - Ultra-fast concurrent multi-engine retrieval (DuckDuckGo + Brave fast backends).
-- Parallel Knowledge Graph (DuckDuckGo Instant Answer) & AI Spell Checking.
-- Smart Relevance & Community Reranker (+45% authentic discussion boost, title-match bonus).
-- In-memory fast LRU cache for instant repeated search delivery.
+- Brave/Bing-quality ranking with strict Domain Diversity (Host Collapsing).
+- Eliminates Wikipedia duplicates/flooding (max 1 Wikipedia per query).
+- Natural organic blending of authentic community discussions (Reddit/GitHub).
+- DuckDuckGo Instant Answer / Knowledge Graph integration.
+- In-memory fast LRU/TTL cache for instant repeated searches.
 - 100% standalone — zero crawler or local database needed.
 """
 
@@ -35,6 +37,13 @@ _QUERY_CACHE: Dict[Tuple[str, str, int], Tuple[float, Dict[str, Any]]] = {}
 _CACHE_TTL_SECONDS = 900  # 15 minutes cache lifetime
 _MAX_CACHE_ENTRIES = 512
 
+# Low-quality SEO affiliate / spam domains to filter or demote
+_BLOCKED_DOMAINS = {
+    "pinterest.com",
+    "bestproducts.com",
+    "toptenreviews.com",
+}
+
 
 def _get_from_cache(query: str, mode: str, top_n: int) -> Dict[str, Any] | None:
     key = (query.strip().lower(), mode, top_n)
@@ -50,7 +59,6 @@ def _get_from_cache(query: str, mode: str, top_n: int) -> Dict[str, Any] | None:
 
 def _put_in_cache(query: str, mode: str, top_n: int, data: Dict[str, Any]) -> None:
     if len(_QUERY_CACHE) >= _MAX_CACHE_ENTRIES:
-        # Evict oldest 20%
         oldest_keys = sorted(_QUERY_CACHE.keys(), key=lambda k: _QUERY_CACHE[k][0])[:100]
         for k in oldest_keys:
             _QUERY_CACHE.pop(k, None)
@@ -58,17 +66,34 @@ def _put_in_cache(query: str, mode: str, top_n: int, data: Dict[str, Any]) -> No
     _QUERY_CACHE[key] = (time.time(), data)
 
 
-def _safe_ddgs_search(query: str, max_results: int) -> List[Dict[str, Any]]:
-    """Fetches web results using direct fast backends (DuckDuckGo + Brave) with fallback."""
+def get_root_domain(url: str) -> str:
+    """Extracts root domain for host collapsing and domain diversity.
+
+    Ensures subdomains (en.wikipedia.org, simple.wikipedia.org, hi.wikipedia.org)
+    all map to 'wikipedia.org' to prevent single-domain result flooding.
+    """
     try:
-        # Direct fast backends bypass rate-limited engine cascades
-        results = list(DDGS(timeout=4).text(query, backend="duckduckgo,brave", max_results=max_results))
+        netloc = urlparse(url).netloc.lower().replace("www.", "")
+        parts = netloc.split(".")
+        if len(parts) >= 2:
+            if "wikipedia" in parts:
+                return "wikipedia.org"
+            if len(parts) > 2:
+                return f"{parts[-2]}.{parts[-1]}"
+        return netloc
+    except Exception:
+        return url
+
+
+def _safe_ddgs_search(query: str, max_results: int) -> List[Dict[str, Any]]:
+    """Fetches web results using direct fast backends (DuckDuckGo, Brave, Yahoo, Startpage) with fallback."""
+    try:
+        results = list(DDGS(timeout=5).text(query, backend="duckduckgo,brave,yahoo,startpage", max_results=max_results))
         if results:
             return results
     except Exception as exc:
         logger.warning("Fast backend search error for '%s': %s", query, exc)
 
-    # Fallback to standard auto-backend if specific backends fail
     try:
         return list(DDGS(timeout=4).text(query, max_results=max_results))
     except Exception as exc:
@@ -77,29 +102,19 @@ def _safe_ddgs_search(query: str, max_results: int) -> List[Dict[str, Any]]:
 
 
 class SearchEngine:
-    """Orchestrates live web search, spelling correction, and knowledge graphs with concurrent retrieval."""
+    """Orchestrates live web search with Brave/Bing-quality domain diversity and ranking."""
 
     def search(self, query: str, top_n: int = config.DEFAULT_TOP_N, mode: str = "all") -> Dict[str, Any]:
-        """Executes an ultra-fast live web search pipeline for a user query.
+        """Executes a live search pipeline preserving native ranking quality with host collapsing.
 
-        Steps:
-            1. Check in-memory result cache.
-            2. Concurrently dispatch:
-               - Web search (DuckDuckGo + Brave fast backends)
-               - Reddit/community discussions search
-               - Knowledge Graph (Instant Answer)
-               - AI Spell check (Gemini Flash with fast-path timeout)
-            3. Smart Reranker: boosts authentic human discussions (Reddit, GitHub, HN),
-               evaluates title-match relevance, and penalizes SEO spam.
-            4. Returns blended, ranked results + knowledge panel.
-
-        Args:
-            query: The raw user search query.
-            top_n: Maximum number of results to return.
-            mode: Search mode ('all' for smart blend, 'discussions' for Reddit/forums only).
-
-        Returns:
-            Dict containing results, knowledge_panel, and query metadata.
+        Key Ranking Principles:
+            1. Host Collapsing / Domain Diversity: Strict cap of 1 result per root domain
+               (no more 3-4 Wikipedia mirrors taking up all top spots).
+            2. Brave / DuckDuckGo Native Relevance: Preserves high-relevance algorithmic
+               ordering instead of crude artificial boosts.
+            3. Organic Community Blending: Weaves top authentic discussions (Reddit, GitHub)
+               into the result stream naturally without hijacking official sites.
+            4. Instant DuckDuckGo Knowledge Card & Non-blocking Spell Check.
         """
         original_query = query
         if not query or not query.strip():
@@ -118,109 +133,134 @@ class SearchEngine:
             return cached
 
         # Step 1: Concurrently dispatch search tasks
-        # - Knowledge Graph task
         fut_kp = _EXECUTOR.submit(get_instant_answer, original_query)
-
-        # - AI Spell check task (runs in background with fast timeout)
         fut_spell = _EXECUTOR.submit(gemini_ai.spell_check, original_query)
 
-        # - Web & Community retrieval tasks
-        raw_candidates: List[Dict[str, Any]] = []
-        seen_urls: set[str] = set()
+        fut_web = _EXECUTOR.submit(_safe_ddgs_search, original_query, top_n + 10)
+        fut_reddit = _EXECUTOR.submit(_safe_ddgs_search, f"{original_query} site:reddit.com", 4)
 
-        if mode == "discussions":
-            search_q = f"{original_query} (site:reddit.com OR site:news.ycombinator.com OR site:github.com OR site:stackoverflow.com)"
-            fut_disc = _EXECUTOR.submit(_safe_ddgs_search, search_q, top_n + 5)
-            try:
-                for r in fut_disc.result(timeout=5.0):
-                    u = r.get("href", "")
-                    if u and u not in seen_urls:
-                        seen_urls.add(u)
-                        raw_candidates.append(r)
-            except Exception as exc:
-                logger.warning("Discussions retrieval error: %s", exc)
-        else:
-            # Mode == 'all': Parallel Dual-channel blend (General Web + Top Reddit Discussions)
-            fut_web = _EXECUTOR.submit(_safe_ddgs_search, original_query, top_n + 5)
-            fut_reddit = _EXECUTOR.submit(_safe_ddgs_search, f"{original_query} site:reddit.com", 4)
+        # Collect raw web results
+        web_results: List[Dict[str, Any]] = []
+        try:
+            web_results = fut_web.result(timeout=5.0)
+        except Exception as exc:
+            logger.warning("Web retrieval error: %s", exc)
 
-            try:
-                for r in fut_web.result(timeout=5.0):
-                    u = r.get("href", "")
-                    if u and u not in seen_urls:
-                        seen_urls.add(u)
-                        raw_candidates.append(r)
-            except Exception as exc:
-                logger.warning("Web retrieval error: %s", exc)
+        # Collect Reddit community results
+        reddit_results: List[Dict[str, Any]] = []
+        try:
+            reddit_results = fut_reddit.result(timeout=5.0)
+        except Exception as exc:
+            logger.warning("Reddit retrieval error: %s", exc)
 
-            try:
-                for r in fut_reddit.result(timeout=5.0):
-                    u = r.get("href", "")
-                    if u and u not in seen_urls:
-                        seen_urls.add(u)
-                        raw_candidates.append(r)
-            except Exception as exc:
-                logger.warning("Reddit retrieval error: %s", exc)
-
-        # Step 2: Resolve Knowledge Panel (non-blocking if finished)
+        # Step 2: Resolve Knowledge Panel & Spell Check (non-blocking)
         knowledge_panel = None
         try:
             knowledge_panel = fut_kp.result(timeout=1.5)
-        except Exception as exc:
-            logger.debug("Knowledge panel retrieval timeout or error: %s", exc)
+        except Exception:
+            pass
 
-        # Step 3: Resolve Spell Check (non-blocking if finished within 0.8s)
         corrected_query = original_query
         try:
             corrected_query = fut_spell.result(timeout=0.8)
-        except (TimeoutError, Exception):
-            # Do not block the user if Gemini is slow
+        except Exception:
             corrected_query = original_query
 
-        # Step 4: Smart Reranker: Title Relevance + Community Factor + Spam Demotion
-        query_tokens = [w.lower() for w in re.findall(r"\b[a-z0-9]+\b", original_query) if len(w) > 2]
-        scored_results: List[Dict[str, Any]] = []
+        # Step 3: Domain Diversity & Intelligent Blending (Host Collapsing)
+        is_reddit_query = "reddit" in original_query.lower()
+        max_reddit_allowed = 10 if is_reddit_query else 2
+        max_wiki_allowed = 1  # Never allow more than 1 Wikipedia page to monopolize results
 
-        for rank_idx, r in enumerate(raw_candidates, start=1):
+        domain_counts: Dict[str, int] = {}
+        seen_urls: set[str] = set()
+        blended_results: List[Dict[str, Any]] = []
+
+        # Prepare filtered Reddit candidates
+        clean_reddit = []
+        for r in reddit_results:
+            u = r.get("href", "")
+            if u and "reddit.com" in u and u not in seen_urls:
+                clean_reddit.append(r)
+
+        reddit_inserted = 0
+        web_inserted = 0
+
+        # Pass 1: Strict Domain Diversity (Max 1 per root domain, natural Reddit injection)
+        for r in web_results:
             url = r.get("href", "")
-            domain = urlparse(url).netloc.replace("www.", "").lower()
-            title = r.get("title", "")
-            title_lower = title.lower()
-            snippet = r.get("body", "")
+            if not url or url in seen_urls:
+                continue
 
-            base_score = 1.0 - (rank_idx * 0.02)
+            root_dom = get_root_domain(url)
+            display_dom = urlparse(url).netloc.replace("www.", "").lower()
 
-            # 1. Authentic Human Community Multiplier (+45% boost)
-            domain_multiplier = 1.0
-            if any(d in domain for d in ("reddit.com", "news.ycombinator.com", "stackoverflow.com", "github.com")):
-                domain_multiplier = 1.45
-            elif any(d in domain for d in ("wikipedia.org", "arxiv.org", "nature.com", "mit.edu", "stanford.edu")):
-                domain_multiplier = 1.30
-            elif any(d in domain for d in ("forum", "community", "stackexchange.com", "quora.com", "medium.com")):
-                domain_multiplier = 1.15
-            elif any(d in domain for d in ("pinterest.com", "forbes.com/advisor", "bestproducts.com")):
-                domain_multiplier = 0.50  # Demote SEO affiliate farms
+            # Filter known affiliate spam
+            if any(spam in root_dom for spam in _BLOCKED_DOMAINS):
+                continue
 
-            # 2. Query Term Match Density in Title
-            matches = sum(1 for token in query_tokens if token in title_lower)
-            title_bonus = (matches / len(query_tokens)) * 0.35 if query_tokens else 0.0
+            # Check domain caps
+            current_count = domain_counts.get(root_dom, 0)
+            if root_dom == "wikipedia.org" and current_count >= max_wiki_allowed:
+                continue
+            if root_dom == "reddit.com" and current_count >= max_reddit_allowed:
+                continue
+            if current_count >= 1:
+                continue
 
-            composite_score = (base_score * domain_multiplier) + title_bonus
-
-            scored_results.append({
+            seen_urls.add(url)
+            domain_counts[root_dom] = current_count + 1
+            blended_results.append({
                 "url": url,
-                "title": title,
-                "snippet": snippet,
-                "domain": domain,
-                "score": round(composite_score, 3),
+                "title": r.get("title", ""),
+                "snippet": r.get("body", ""),
+                "domain": display_dom,
             })
+            web_inserted += 1
 
-        # Sort descending by composite score
-        scored_results.sort(key=lambda x: x["score"], reverse=True)
-        for new_rank, item in enumerate(scored_results, start=1):
-            item["rank"] = new_rank
+            # After top 2 authoritative web results, blend 1 top relevant Reddit discussion (if available)
+            if web_inserted == 2 and clean_reddit and reddit_inserted == 0:
+                for red in clean_reddit:
+                    r_url = red.get("href", "")
+                    if r_url and r_url not in seen_urls and domain_counts.get("reddit.com", 0) < max_reddit_allowed:
+                        seen_urls.add(r_url)
+                        domain_counts["reddit.com"] = domain_counts.get("reddit.com", 0) + 1
+                        blended_results.append({
+                            "url": r_url,
+                            "title": red.get("title", ""),
+                            "snippet": red.get("body", ""),
+                            "domain": "reddit.com",
+                        })
+                        reddit_inserted += 1
+                        break
 
-        final_results = scored_results[:top_n]
+        # Pass 2: If we still need more results to fulfill top_n, allow a 2nd result from established domains (excluding wikipedia)
+        if len(blended_results) < top_n:
+            for r in web_results:
+                if len(blended_results) >= top_n:
+                    break
+                url = r.get("href", "")
+                if not url or url in seen_urls:
+                    continue
+                root_dom = get_root_domain(url)
+                display_dom = urlparse(url).netloc.replace("www.", "").lower()
+                if root_dom == "wikipedia.org":  # Never duplicate wikipedia
+                    continue
+                if any(spam in root_dom for spam in _BLOCKED_DOMAINS):
+                    continue
+                if domain_counts.get(root_dom, 0) < 2:
+                    seen_urls.add(url)
+                    domain_counts[root_dom] = domain_counts.get(root_dom, 0) + 1
+                    blended_results.append({
+                        "url": url,
+                        "title": r.get("title", ""),
+                        "snippet": r.get("body", ""),
+                        "domain": display_dom,
+                    })
+
+        # Assign final clean ranks
+        final_results = blended_results[:top_n]
+        for rank, item in enumerate(final_results, start=1):
+            item["rank"] = rank
 
         result_payload = {
             "original_query": original_query,
@@ -231,7 +271,6 @@ class SearchEngine:
             "results": final_results,
         }
 
-        # Cache valid results
         if final_results:
             _put_in_cache(original_query, mode, top_n, result_payload)
 
