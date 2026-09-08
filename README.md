@@ -1,17 +1,20 @@
-# ⚡ SOUL Search Engine
+# ⚡ Light Search Engine
 
-A hyper-fast, privacy-first meta-search engine featuring **Dual-Channel Live Web Search**, **Smart Community Reranking** (Reddit/GitHub boost), **DuckDuckGo Knowledge Graph** entity cards, and an in-page **1-Click Clean Reader** that strips ads and popups.
+A state-of-the-art, privacy-focused search engine featuring an interactive **Three.js 3D particle universe**, **liquid-metal WebGL shaders**, **dynamic Safe Search toggling (SFW / NSFW)**, **predictive autocomplete**, and a dedicated **Knowledge Graph**.
+
+Built and maintained by **[Nishkarsh Shrivastava (szzsuke)](https://github.com/szzsuke)**.
 
 ---
 
-## ✨ Features
+## ✨ Key Features
 
-- 🌐 **Live Real-Time Web Search:** Queries the live open web via DuckDuckGo's live backend with zero latency, zero crawler overhead, and zero database required.
-- 💬 **Smart Community & Human Reranker:** Automatically elevates real human discussions (Reddit, Hacker News, GitHub, Stack Overflow) by **+45%** so authentic answers appear at the top instead of SEO marketing spam.
-- 🏛 **DuckDuckGo Knowledge Graph:** Rich entity panels displaying official encyclopedic summaries, hero images, and interactive related-topic pivot tags.
-- 📖 **1-Click Clean Reader View:** Built-in distraction-free reader mode that extracts clean article text, headings, and images while stripping ads, cookie banners, and paywalls.
-- ✍️ **AI Spell-Check:** Google Gemini Flash integration for query typo and spelling correction (`Did you mean: ...`).
-- 🎨 **Modern Dark-Mode UI:** Frosted glass aesthetic, liquid thermal accents, and category filter tabs (`All` vs `Discussions & Reddit`).
+- 🌌 **Living 3D Stage:** Interactive Three.js particle backdrop with liquid metal shader search and play controls.
+- 🛡️ **Interactive Safe Search:** Instant switch toggle on results to effortlessly transition between safe and unfiltered (NSFW / SFW) surfing.
+- 🔍 **Real-Time Meta Search:** Deep multi-source retrieval blending web results, domain collapsing, and Reddit discussions with zero crawler overhead.
+- ⚡ **Instant Predictive Autocomplete & Related Chips:** Fast prefix suggestions (`/api/suggest`) and clickable related search chips.
+- 🏛️ **Knowledge Graph & Creator Panel:** Rich entity panels and a dedicated profile card when querying `szzsuke` or `nishkarsh`.
+- 🎵 **Integrated Ambient Soundtrack:** Built-in audio controller featuring *Evan Call - Time Flows Ever Onward*.
+- 📖 **1-Click Clean Reader Mode:** Distraction-free article extraction stripping ads, banners, and paywalls (`/api/reader`).
 
 ---
 
@@ -19,7 +22,7 @@ A hyper-fast, privacy-first meta-search engine featuring **Dual-Channel Live Web
 
 ### 1. Install Dependencies
 ```bash
-pip install Flask ddgs requests beautifulsoup4 google-genai
+pip install -r requirements.txt
 ```
 
 ### 2. (Optional) Set Gemini API Key
@@ -28,7 +31,7 @@ export GEMINI_API_KEY="your_api_key_here"
 ```
 *(Search works completely fine even without an API key!)*
 
-### 3. Run the Search Engine
+### 3. Start the Server
 ```bash
 python main.py
 ```
@@ -40,12 +43,14 @@ Open **[http://localhost:5000](http://localhost:5000)** in your browser!
 
 | Endpoint | Method | Description |
 | :--- | :--- | :--- |
-| `/` | `GET` | Main web search UI |
-| `/api/search?q=<query>&mode=<all\|discussions>` | `GET` | JSON search results with Knowledge Panel |
+| `/` | `GET` | Main interactive search engine frontend |
+| `/api/search?q=<query>&tab=<all\|images\|news\|videos>&safe=<1\|0>&offset=<n>` | `GET` | JSON search results with Knowledge Panel & pagination |
+| `/api/suggest?q=<query>` | `GET` | Predictive domain completions and search queries |
 | `/api/reader?url=<url>` | `GET` | Distraction-free clean article reader |
-| `/api/knowledge?q=<query>` | `GET` | DuckDuckGo Instant Answer entity details |
+| `/api/knowledge?q=<query>` | `GET` | Instant answer entity knowledge graph |
 
 ---
 
 ## 📄 License
-MIT License.
+MIT License. Open source under the terms of the MIT License.
+

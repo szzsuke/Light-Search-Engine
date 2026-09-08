@@ -11,20 +11,15 @@ venv/
 ENV/
 setup_env.ps1
 
-# Node & Frontend dependencies
-frontend/node_modules/
-frontend/dist/
+# Node & Frontend build output
 node_modules/
 dist/
 .oxlintrc.json
 
-# Media & Temporary files
-*.mp3
-*.jpg
-*.jpeg
-*.png
-*.txt
-requirements.txt
+# Temporary files & logs
+*.log
+*.tmp
+*.bak
 *.md.bak
 README (1).md
 

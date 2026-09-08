@@ -13,13 +13,14 @@ from __future__ import annotations
 from html import escape
 from typing import Any, Dict
 
-from flask import Flask, Response, jsonify, request
+from flask import Flask, Response, jsonify, render_template, request, send_from_directory
 
 from ddg_knowledge import get_instant_answer
 from reader import extract_clean_article
 from search_engine import search_engine
 
 app = Flask(__name__)
+app.config["TEMPLATES_AUTO_RELOAD"] = True
 
 
 @app.after_request
@@ -28,6 +29,11 @@ def add_cors_headers(response: Response) -> Response:
     response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
+
+
+@app.route("/favicon.ico")
+def favicon() -> Response:
+    return Response(status=204)
 
 
 def render_page(search_result: Dict[str, Any] | None = None) -> str:
@@ -112,13 +118,15 @@ def render_page(search_result: Dict[str, Any] | None = None) -> str:
 
 
 @app.route("/", methods=["GET"])
-def index() -> Response:
-    """Serves the raw basic HTML search page, running a search if `q` is present."""
-    query = request.args.get("q", "").strip()
-    result = None
-    if query:
-        result = search_engine.search(query, top_n=12)
-    return Response(render_page(result), mimetype="text/html")
+def index() -> Response | str:
+    """Serves the interactive GPU particle loop frontend."""
+    return render_template("index.html")
+
+
+@app.route("/assets/<path:filename>", methods=["GET"])
+def serve_assets(filename: str) -> Response:
+    """Serves static assets for the Light Search Engine frontend."""
+    return send_from_directory("assets", filename)
 
 
 @app.route("/search", methods=["GET"])
@@ -128,20 +136,88 @@ def search_api() -> Response:
 
     Query params:
         q: The search query (required).
+        tab / mode: Search tab ('all', 'images', 'news', 'videos').
         limit: Max number of results to return (default 10).
+        offset: Offset for infinite scroll pagination (default 0).
     """
     query = request.args.get("q", "").strip()
     if not query:
         return jsonify({"error": "Missing required query parameter 'q'."}), 400
 
+    mode = request.args.get("tab") or request.args.get("mode") or "all"
+
     try:
         limit = int(request.args.get("limit", 10))
     except ValueError:
         limit = 10
-    limit = max(1, min(limit, 100))
+    limit = max(1, min(limit, 50))
 
-    result = search_engine.search(query, top_n=limit)
+    try:
+        offset = int(request.args.get("offset", 0))
+    except ValueError:
+        offset = 0
+    safe_param = request.args.get("safe", "1").strip().lower()
+    safe = safe_param not in ("0", "false", "off", "no")
+
+    result = search_engine.search(query, offset=offset, limit=limit, mode=mode, safe=safe)
     return jsonify(result)
+
+
+_POPULAR_DOMAINS = [
+    "youtube.com", "reddit.com", "mail.google.com", "gmail.com", "google.com",
+    "github.com", "wikipedia.org", "twitter.com", "x.com", "instagram.com",
+    "linkedin.com", "facebook.com", "amazon.com", "netflix.com", "chatgpt.com",
+    "openai.com", "stackoverflow.com", "spotify.com", "twitch.tv", "medium.com",
+    "quora.com", "apple.com", "microsoft.com", "tiktok.com", "huggingface.co",
+    "arxiv.org", "discord.com", "pinterest.com", "imdb.com", "dropbox.com"
+]
+
+
+@app.route("/api/suggest", methods=["GET"])
+def suggest_api() -> Response:
+    """Provides instant predictive domain completions and search queries."""
+    import urllib.parse
+    import urllib.request
+    import json
+
+    q = request.args.get("q", "").strip().lower()
+    if not q:
+        return jsonify({"domains": [], "queries": []})
+
+    # Domain prefix matches
+    domain_matches = []
+    clean_q = q.replace("https://", "").replace("http://", "").replace("www.", "")
+    if clean_q.startswith("szz") or "szzsuke".startswith(clean_q):
+        domain_matches.append("github.com/szzsuke")
+
+    for d in _POPULAR_DOMAINS:
+        if d.startswith(clean_q):
+            domain_matches.append(d)
+        elif "." in clean_q and clean_q in d:
+            domain_matches.append(d)
+    domain_matches = domain_matches[:4]
+
+    # Query autocompletions from fast provider
+    queries = []
+    if any(clean_q.startswith(p) for p in ["szz", "suke", "nish", "maker of light", "creator of light"]) or "szzsuke".startswith(clean_q):
+        queries.append("szzsuke")
+        queries.append("szzsuke (Maker of Light)")
+
+    try:
+        req_url = f"https://suggestqueries.google.com/complete/search?client=firefox&q={urllib.parse.quote(q)}"
+        req = urllib.request.Request(req_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if len(data) > 1 and isinstance(data[1], list):
+                for item in data[1]:
+                    if item.lower() not in [x.lower() for x in queries]:
+                        queries.append(item)
+                    if len(queries) >= 6:
+                        break
+    except Exception:
+        pass
+
+    return jsonify({"domains": domain_matches, "queries": queries[:6]})
 
 
 @app.route("/api/reader", methods=["GET"])

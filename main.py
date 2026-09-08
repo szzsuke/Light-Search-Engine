@@ -1,7 +1,7 @@
 """
 main.py
 =======
-Command-line entry point for the SOUL Search Engine.
+Command-line entry point for the Light Search Engine.
 
 Usage:
     python main.py          # Starts the search server on port 5000
@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 
 
 def cmd_serve(host: str = config.HOST, port: int = config.PORT) -> None:
-    """Starts the SOUL search application."""
+    """Starts the Light search application."""
     from app import app
 
-    logger.info("Starting SOUL Search Engine on %s:%d ...", host, port)
+    logger.info("Starting Light Search Engine on %s:%d ...", host, port)
     app.run(host=host, port=port, debug=False)
 
 

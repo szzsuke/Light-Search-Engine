@@ -17,6 +17,52 @@ logger = logging.getLogger("ddg_knowledge")
 DDG_API_URL = "https://api.duckduckgo.com/"
 
 
+_CREATOR_ALIASES = {
+    "szzsuke",
+    "@szzsuke",
+    "szzsuke.",
+    "nishkarsh",
+    "nishkarsh shrivastava",
+    "maker of light",
+    "maker of light search",
+    "maker of light search engine",
+    "creator of light search engine",
+    "creator of light",
+    "who made light search engine",
+    "who created light search engine",
+    "who is szzsuke",
+}
+
+
+def _get_creator_knowledge_panel() -> Dict[str, Any]:
+    return {
+        "heading": "Nishkarsh Shrivastava",
+        "handle": "@szzsuke",
+        "badge": "Maker of Light Search Engine",
+        "is_creator": True,
+        "abstract": "Nishkarsh Shrivastava (known online as szzsuke) is an Indian software developer, creative technologist, and the creator of Light Search Engine. He specializes in search engineering, interactive 3D web graphics, and high-performance computational systems.",
+        "image_url": "assets/szzsuke.jpg",
+        "fallback_image_url": "https://avatars.githubusercontent.com/u/222186582?v=4",
+        "source": "GitHub Profile & Portfolio",
+        "source_url": "https://github.com/szzsuke",
+        "entity_type": "Software Developer & Creator",
+        "infobox": {
+            "Role": "Maker of Light Search Engine",
+            "Known As": "szzsuke",
+            "Location": "Bhubaneswar, Odisha, India",
+            "Key Projects": "Light Search Engine, AstraLine, VTOP-Auto",
+        },
+        "social_links": [
+            {"name": "GitHub", "url": "https://github.com/szzsuke", "icon": "github"},
+            {"name": "LinkedIn", "url": "https://www.linkedin.com/in/szzsuke/", "icon": "linkedin"},
+            {"name": "X", "url": "https://x.com/nishkarsh005", "icon": "twitter"},
+            {"name": "Instagram", "url": "https://www.instagram.com/szzsuke", "icon": "instagram"},
+            {"name": "LeetCode", "url": "https://leetcode.com/u/szzsuke/", "icon": "code"},
+            {"name": "Sketchfab", "url": "https://sketchfab.com/Szzsuke", "icon": "box"},
+        ],
+    }
+
+
 def get_instant_answer(query: str) -> Optional[Dict[str, Any]]:
     """Queries DuckDuckGo's Instant Answer API for encyclopedic entity data.
 
@@ -28,6 +74,10 @@ def get_instant_answer(query: str) -> Optional[Dict[str, Any]]:
     """
     if not query or len(query.strip()) < 2:
         return None
+
+    clean_q = query.strip().lower()
+    if clean_q in _CREATOR_ALIASES or clean_q.replace(" ", "") == "szzsuke" or "szzsuke" in clean_q:
+        return _get_creator_knowledge_panel()
 
     try:
         params = {
