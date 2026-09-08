@@ -1,14 +1,16 @@
 # ⚡ Light Search Engine
 
-A state-of-the-art, privacy-focused search engine featuring an interactive **Three.js 3D particle universe**, **liquid-metal WebGL shaders**, **dynamic Safe Search toggling (SFW / NSFW)**, **predictive autocomplete**, and a dedicated **Knowledge Graph**.
+A state-of-the-art, privacy-focused search engine featuring an interactive **Three.js 3D particle universe**, **WebGL dispersion shaders**, **dynamic Safe Search toggling (SFW / NSFW)**, **predictive autocomplete**, and a dedicated **Knowledge Graph**.
 
 Built and maintained by **[Nishkarsh Shrivastava (szzsuke)](https://github.com/szzsuke)**.
+
+🌐 **Live Experience:** [**https://szzsuke.github.io/Light-Search-Engine/**](https://szzsuke.github.io/Light-Search-Engine/)
 
 ---
 
 ## ✨ Key Features
 
-- 🌌 **Living 3D Stage:** Interactive Three.js particle backdrop with liquid metal shader search and play controls.
+- 🌌 **Living 3D Stage:** Interactive Three.js particle backdrop with custom shader search and audio controls.
 - 🛡️ **Interactive Safe Search:** Instant switch toggle on results to effortlessly transition between safe and unfiltered (NSFW / SFW) surfing.
 - 🔍 **Real-Time Meta Search:** Deep multi-source retrieval blending web results, domain collapsing, and Reddit discussions with zero crawler overhead.
 - ⚡ **Instant Predictive Autocomplete & Related Chips:** Fast prefix suggestions (`/api/suggest`) and clickable related search chips.
@@ -18,7 +20,20 @@ Built and maintained by **[Nishkarsh Shrivastava (szzsuke)](https://github.com/s
 
 ---
 
-## 🚀 Quick Start
+## 🌐 GitHub Pages Deployment
+
+The frontend experience is deployed via **GitHub Actions**:
+
+🔗 **[https://szzsuke.github.io/Light-Search-Engine/](https://szzsuke.github.io/Light-Search-Engine/)**
+
+### To Enable on GitHub:
+1. Navigate to your repository **Settings** &rarr; **Pages**.
+2. Under **Build and deployment** &rarr; **Source**, select **GitHub Actions**.
+3. The workflow in `.github/workflows/deploy-pages.yml` will automatically build and publish your site!
+
+---
+
+## 🚀 Local Quick Start
 
 ### 1. Install Dependencies
 ```bash
@@ -53,4 +68,3 @@ Open **[http://localhost:5000](http://localhost:5000)** in your browser!
 
 ## 📄 License
 MIT License. Open source under the terms of the MIT License.
-

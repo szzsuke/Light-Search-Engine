@@ -4053,7 +4053,18 @@
   }
 
   // 3. Autocomplete Suggestion Logic & API Integration
-  var suggestApiBase = 'http://127.0.0.1:5000/api/suggest';
+  var apiHost = (function () {
+    try {
+      var params = new URLSearchParams(window.location.search);
+      if (params.get('api')) return params.get('api').replace(/\/+$/, '');
+      if (window.LIGHT_API_HOST) return window.LIGHT_API_HOST.replace(/\/+$/, '');
+      if (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') {
+        return window.location.port ? window.location.origin : 'http://127.0.0.1:5000';
+      }
+    } catch (e) {}
+    return '';
+  })();
+  var suggestApiBase = apiHost ? (apiHost + '/api/suggest') : '/api/suggest';
   var suggestAbortController = null;
   var suggestDebounceTimer = null;
 
@@ -4087,16 +4098,43 @@
     }
     suggestAbortController = new AbortController();
 
-    var url = suggestApiBase + '?q=' + encodeURIComponent(query.trim());
-    fetch(url, { signal: suggestAbortController.signal })
-      .then(function (res) { return res.json(); })
+    var q = query.trim();
+    var popularDomains = [
+      "youtube.com", "reddit.com", "google.com", "github.com", "wikipedia.org",
+      "twitter.com", "x.com", "instagram.com", "linkedin.com", "facebook.com",
+      "amazon.com", "netflix.com", "spotify.com", "medium.com", "discord.com"
+    ];
+    var matchedDomains = [];
+    var cleanQ = q.toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, '');
+    if (cleanQ.startsWith('szz') || 'szzsuke'.startsWith(cleanQ)) {
+      matchedDomains.push('github.com/szzsuke');
+    }
+    for (var d = 0; d < popularDomains.length; d++) {
+      if (popularDomains[d].indexOf(cleanQ) === 0) {
+        matchedDomains.push(popularDomains[d]);
+        if (matchedDomains.length >= 3) break;
+      }
+    }
+
+    var fetchUrl = (suggestApiBase.indexOf('http') === 0 ? suggestApiBase : (apiHost ? (apiHost + '/api/suggest') : '/api/suggest')) + '?q=' + encodeURIComponent(q);
+    fetch(fetchUrl, { signal: suggestAbortController.signal })
+      .then(function (res) {
+        if (!res.ok) throw new Error('suggest status ' + res.status);
+        return res.json();
+      })
       .then(function (data) { callback(data); })
       .catch(function (err) {
         if (err.name === 'AbortError') return;
-        fetch('/api/suggest?q=' + encodeURIComponent(query.trim()))
-          .then(function (res) { return res.json(); })
-          .then(function (data) { callback(data); })
-          .catch(function () { callback({ domains: [], queries: [] }); });
+        var wikiSuggestUrl = 'https://en.wikipedia.org/w/api.php?action=opensearch&format=json&origin=*&limit=6&search=' + encodeURIComponent(q);
+        fetch(wikiSuggestUrl)
+          .then(function (r) { return r.json(); })
+          .then(function (wData) {
+            var titles = (wData && wData[1]) ? wData[1] : [];
+            callback({ domains: matchedDomains, queries: titles });
+          })
+          .catch(function () {
+            callback({ domains: matchedDomains, queries: [] });
+          });
       });
   }
 
@@ -4205,7 +4243,7 @@
   var currentOffset = 0;
   var isSearching = false;
   var hasMoreResults = true;
-  var searchApiBase = 'http://127.0.0.1:5000/api/search';
+  var searchApiBase = apiHost ? (apiHost + '/api/search') : '/api/search';
 
   var resultsView = document.getElementById('results-view');
   var resQueryInput = document.getElementById('res-query-input');
@@ -4765,7 +4803,72 @@
   }
 
   function renderOfflineResults(query, tab, offset) {
-    var sampleResults = [
+    if (isCreatorQuery(query)) {
+      renderKnowledgePanel(getCreatorKnowledgePanel());
+    }
+
+    var wikiUrl = 'https://en.wikipedia.org/w/api.php?action=opensearch&format=json&origin=*&limit=10&search=' + encodeURIComponent(query);
+    fetch(wikiUrl)
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        var titles = (data && data[1]) ? data[1] : [];
+        var snippets = (data && data[2]) ? data[2] : [];
+        var urls = (data && data[3]) ? data[3] : [];
+        var liveResults = [];
+
+        if (isCreatorQuery(query)) {
+          liveResults.push({
+            title: "szzsuke (Nishkarsh Shrivastava) — Maker of Light Search Engine",
+            url: "https://github.com/szzsuke",
+            domain: "github.com",
+            site_name: "GitHub",
+            snippet: "Creator and lead architect of Light Search Engine. Interactive 3D web systems, algorithms, and open source development."
+          });
+        }
+
+        for (var i = 0; i < titles.length; i++) {
+          liveResults.push({
+            title: titles[i],
+            url: urls[i] || ("https://en.wikipedia.org/wiki/" + encodeURIComponent(titles[i])),
+            domain: "wikipedia.org",
+            site_name: "Wikipedia",
+            snippet: snippets[i] || ("Comprehensive reference, facts, and encyclopedic overview of " + titles[i] + ".")
+          });
+        }
+
+        if (liveResults.length === 0) {
+          liveResults = getSampleFallbackResults(query);
+        }
+
+        var offlineKp = isCreatorQuery(query) ? getCreatorKnowledgePanel() : {
+          heading: query,
+          abstract: "Real-time exploration of " + query + " via Light Search Engine client integration.",
+          source: "Wikipedia OpenSearch"
+        };
+
+        renderSearchResults({
+          results: liveResults,
+          total_results: liveResults.length,
+          knowledge_panel: offlineKp
+        }, offset, "0.12");
+      })
+      .catch(function () {
+        var sampleResults = getSampleFallbackResults(query);
+        var offlineKp = isCreatorQuery(query) ? getCreatorKnowledgePanel() : {
+          heading: query,
+          abstract: "Real-time exploration of " + query + " powered by Light Search Engine.",
+          source: "Light Knowledge Graph"
+        };
+        renderSearchResults({
+          results: sampleResults,
+          total_results: 3,
+          knowledge_panel: offlineKp
+        }, offset, "0.10");
+      });
+  }
+
+  function getSampleFallbackResults(query) {
+    return [
       {
         title: query + " — Living Web Insights & Search",
         url: "https://en.wikipedia.org/wiki/" + encodeURIComponent(query),
@@ -4788,18 +4891,6 @@
         snippet: "Find open source repositories, packages, tools, and developer libraries built around " + query + "."
       }
     ];
-
-    var offlineKp = isCreatorQuery(query) ? getCreatorKnowledgePanel() : {
-      heading: query,
-      abstract: "Real-time exploration of " + query + " powered by Light Search Engine's safe and private index.",
-      source: "Light Knowledge Graph"
-    };
-
-    renderSearchResults({
-      results: sampleResults,
-      total_results: 1840000000,
-      knowledge_panel: offlineKp
-    }, offset, "0.18");
   }
 
   function escapeHtml(str) {
