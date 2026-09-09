@@ -209,6 +209,18 @@ def extract_site_info(url: str, title: str = "", body: str = "") -> Dict[str, An
     }
 
 
+def clean_snippet(text: str, max_len: int = 210) -> str:
+    """Sanitizes snippet text into a clean, concise DuckDuckGo-style excerpt."""
+    if not text:
+        return ""
+    cleaned = re.sub(r"\s+", " ", text).strip()
+    if len(cleaned) <= max_len:
+        return cleaned
+    truncated = cleaned[:max_len].rsplit(" ", 1)[0].strip()
+    truncated = re.sub(r"[,;:\-–—\.\s]+$", "", truncated)
+    return truncated + "..."
+
+
 def _fetch_ddg_html_pages(query: str, max_pages: int = 3, safe: bool = True) -> List[Dict[str, Any]]:
     """Fetches continuous real results directly from DuckDuckGo HTML without rate limits."""
     headers = {
@@ -636,12 +648,12 @@ class SearchEngine:
                 blended_results.append({
                     "url": off_url,
                     "title": off_site.get("title", ""),
-                    "snippet": off_site.get("snippet", ""),
+                    "snippet": clean_snippet(off_site.get("snippet", ""), 210),
                     "domain": off_display,
                     **off_meta,
                 })
 
-        # Pass 1: Strict Domain Diversity (up to 2 per root domain to prevent single-site monopoly)
+        # Pass 1: Strict Domain Diversity (up to 2 per root domain, max 1 for encyclopedias)
         for r in web_results:
             url = r.get("href", "")
             if not url or url in seen_urls:
@@ -655,22 +667,26 @@ class SearchEngine:
                 continue
 
             current_count = domain_counts.get(root_dom, 0)
-            if current_count >= 2:
+            domain_limit = 1 if root_dom in {"wikipedia.org", "grokipedia.com"} else 2
+            if current_count >= domain_limit:
                 continue
+
+            raw_body = r.get("body", "") or r.get("snippet", "")
+            cleaned_snip = clean_snippet(raw_body, 210)
 
             seen_urls.add(url)
             domain_counts[root_dom] = current_count + 1
-            site_meta = extract_site_info(url, r.get("title", ""), r.get("body", ""))
+            site_meta = extract_site_info(url, r.get("title", ""), raw_body)
 
             blended_results.append({
                 "url": url,
                 "title": r.get("title", ""),
-                "snippet": r.get("body", ""),
+                "snippet": cleaned_snip,
                 "domain": display_dom,
                 **site_meta,
             })
 
-        # Pass 2: Secondary Diverse Fill for long lists
+        # Pass 2: Secondary Diverse Fill for deep pages
         for r in web_results:
             if len(blended_results) >= 150:
                 break
@@ -682,13 +698,14 @@ class SearchEngine:
             if safe and is_explicit_content(url, r.get("title", ""), r.get("body", "")):
                 continue
             if domain_counts.get(root_dom, 0) < 4:
+                raw_body = r.get("body", "") or r.get("snippet", "")
                 seen_urls.add(url)
                 domain_counts[root_dom] = domain_counts.get(root_dom, 0) + 1
-                site_meta = extract_site_info(url, r.get("title", ""), r.get("body", ""))
+                site_meta = extract_site_info(url, r.get("title", ""), raw_body)
                 blended_results.append({
                     "url": url,
                     "title": r.get("title", ""),
-                    "snippet": r.get("body", ""),
+                    "snippet": clean_snippet(raw_body, 210),
                     "domain": display_dom,
                     **site_meta,
                 })
