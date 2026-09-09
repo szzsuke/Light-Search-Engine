@@ -580,11 +580,10 @@ class SearchEngine:
         fut_kp = _EXECUTOR.submit(get_instant_answer, original_query)
         fut_spell = _EXECUTOR.submit(gemini_ai.spell_check, original_query)
         
-        # Concurrently fetch DuckDuckGo HTML deep pages + DDG Lite + DDGS text search + Reddit
+        # Concurrently fetch DuckDuckGo HTML deep pages + DDG Lite + DDGS text search
+        fut_ddgs = _EXECUTOR.submit(_safe_ddgs_search, original_query, 30, 1, safe)
         fut_html = _EXECUTOR.submit(_fetch_ddg_html_pages, original_query, 3, safe)
         fut_lite = _EXECUTOR.submit(_fetch_ddg_lite_pages, original_query, safe)
-        fut_ddgs = _EXECUTOR.submit(_safe_ddgs_search, original_query, 25, 1, safe)
-        fut_reddit = _EXECUTOR.submit(_safe_ddgs_search, f"{original_query} site:reddit.com", 15, 1, safe)
 
         web_results: List[Dict[str, Any]] = []
         try:
@@ -605,12 +604,6 @@ class SearchEngine:
         except Exception as exc:
             logger.warning("DDG Lite retrieval error: %s", exc)
 
-        reddit_results: List[Dict[str, Any]] = []
-        try:
-            reddit_results = fut_reddit.result(timeout=6.0)
-        except Exception as exc:
-            logger.warning("Reddit retrieval error: %s", exc)
-
         knowledge_panel = None
         try:
             knowledge_panel = fut_kp.result(timeout=1.5)
@@ -623,23 +616,9 @@ class SearchEngine:
         except Exception:
             corrected_query = original_query
 
-        # Domain Diversity & Host Collapsing
-        is_reddit_query = "reddit" in original_query.lower()
-        max_reddit_allowed = 12 if is_reddit_query else 2
-
         domain_counts: Dict[str, int] = {}
         seen_urls: set[str] = set()
         blended_results: List[Dict[str, Any]] = []
-        saved_wiki_item = None
-
-        clean_reddit = []
-        for r in reddit_results:
-            u = r.get("href", "")
-            if u and "reddit.com" in u and u not in seen_urls:
-                clean_reddit.append(r)
-
-        reddit_inserted = 0
-        web_inserted = 0
 
         # Prepend verified official site navigational link if discovered via Instant Answers
         if knowledge_panel and knowledge_panel.get("official_sites"):
@@ -661,9 +640,8 @@ class SearchEngine:
                     "domain": off_display,
                     **off_meta,
                 })
-                web_inserted += 1
 
-        # Pass 1: Strict Domain Diversity (up to 2 per root domain)
+        # Pass 1: Strict Domain Diversity (up to 2 per root domain to prevent single-site monopoly)
         for r in web_results:
             url = r.get("href", "")
             if not url or url in seen_urls:
@@ -676,25 +654,7 @@ class SearchEngine:
             if safe and is_explicit_content(url, r.get("title", ""), r.get("body", "")):
                 continue
 
-            # Wikipedia deduplication logic
-            if root_dom == "wikipedia.org":
-                if knowledge_panel is not None and len(blended_results) > 0:
-                    continue
-                elif saved_wiki_item is None:
-                    site_meta = extract_site_info(url, r.get("title", ""), r.get("body", ""))
-                    saved_wiki_item = {
-                        "url": url,
-                        "title": r.get("title", ""),
-                        "snippet": r.get("body", ""),
-                        "domain": display_dom,
-                        **site_meta,
-                    }
-                    seen_urls.add(url)
-                    continue
-
             current_count = domain_counts.get(root_dom, 0)
-            if root_dom == "reddit.com" and current_count >= max_reddit_allowed:
-                continue
             if current_count >= 2:
                 continue
 
@@ -709,38 +669,8 @@ class SearchEngine:
                 "domain": display_dom,
                 **site_meta,
             })
-            web_inserted += 1
 
-            # Insert demoted Wikipedia around rank 5 or 6 if held
-            if saved_wiki_item and len(blended_results) == 5:
-                blended_results.append(saved_wiki_item)
-                saved_wiki_item = None
-
-            # Blend community Reddit discussion naturally without dominating
-            should_blend_reddit = (is_reddit_query and web_inserted % 3 == 0) or (clean_reddit and web_inserted == 4 and reddit_inserted == 0)
-            if should_blend_reddit and clean_reddit and reddit_inserted < max_reddit_allowed:
-                for red in clean_reddit:
-                    r_url = red.get("href", "")
-                    if r_url and r_url not in seen_urls and domain_counts.get("reddit.com", 0) < max_reddit_allowed:
-                        seen_urls.add(r_url)
-                        domain_counts["reddit.com"] = domain_counts.get("reddit.com", 0) + 1
-                        r_meta = extract_site_info(r_url, red.get("title", ""), red.get("body", ""))
-                        blended_results.append({
-                            "url": r_url,
-                            "title": red.get("title", ""),
-                            "snippet": red.get("body", ""),
-                            "domain": "reddit.com",
-                            **r_meta,
-                        })
-                        reddit_inserted += 1
-                        break
-
-        # Append saved wiki if still held or if no other results were found
-        if saved_wiki_item and (knowledge_panel is None or len(blended_results) == 0):
-            blended_results.append(saved_wiki_item)
-            saved_wiki_item = None
-
-        # Pass 2: Secondary Diverse Fill
+        # Pass 2: Secondary Diverse Fill for long lists
         for r in web_results:
             if len(blended_results) >= 150:
                 break
@@ -749,8 +679,6 @@ class SearchEngine:
                 continue
             root_dom = get_root_domain(url)
             display_dom = urlparse(url).netloc.replace("www.", "").lower()
-            if root_dom == "wikipedia.org":
-                continue
             if safe and is_explicit_content(url, r.get("title", ""), r.get("body", "")):
                 continue
             if domain_counts.get(root_dom, 0) < 4:
