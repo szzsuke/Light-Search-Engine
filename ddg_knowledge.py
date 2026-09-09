@@ -139,6 +139,18 @@ def get_instant_answer(query: str) -> Optional[Dict[str, Any]]:
                 if isinstance(item, dict) and item.get("label") and item.get("value"):
                     infobox_data[item["label"]] = str(item["value"])
 
+        # Extract official / direct website results if available
+        official_sites = []
+        for res_item in data.get("Results", []):
+            if isinstance(res_item, dict) and res_item.get("FirstURL"):
+                first_url = res_item["FirstURL"]
+                raw_text = res_item.get("Text", "")
+                official_sites.append({
+                    "url": first_url,
+                    "title": raw_text or heading or query.title(),
+                    "snippet": f"Official website for {heading or query.title()}.",
+                })
+
         return {
             "heading": heading or query.title(),
             "abstract": abstract,
@@ -148,6 +160,7 @@ def get_instant_answer(query: str) -> Optional[Dict[str, Any]]:
             "entity_type": data.get("Entity", ""),
             "related_nodes": related_nodes,
             "infobox": infobox_data,
+            "official_sites": official_sites,
         }
 
     except Exception as exc:

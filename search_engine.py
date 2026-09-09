@@ -41,13 +41,6 @@ _QUERY_CACHE: Dict[Tuple[str, str], Tuple[float, Dict[str, Any]]] = {}
 _CACHE_TTL_SECONDS = 900  # 15 minutes cache lifetime
 _MAX_CACHE_ENTRIES = 512
 
-# Low-quality SEO affiliate / spam domains to filter or demote
-_BLOCKED_DOMAINS = {
-    "pinterest.com",
-    "bestproducts.com",
-    "toptenreviews.com",
-}
-
 # Known explicit adult domains and keywords for SafeSearch enforcement
 _ADULT_DOMAINS = {
     "pornhub", "xvideos", "xnxx", "xhamster", "redtube", "youporn",
@@ -243,6 +236,8 @@ def _fetch_ddg_html_pages(query: str, max_pages: int = 3, safe: bool = True) -> 
                 raw_href = t_el.get("href", "")
                 parsed = parse_qs(urlparse(raw_href).query)
                 final_url = parsed.get("uddg", [raw_href])[0]
+                if "duckduckgo.com/y.js" in final_url or "ad_provider" in final_url or "bing.com/aclick" in final_url:
+                    continue
                 if final_url.startswith("http"):
                     all_results.append({
                         "title": t_el.get_text(strip=True),
@@ -291,6 +286,8 @@ def _fetch_ddg_lite_pages(query: str, safe: bool = True) -> List[Dict[str, Any]]
                 if "uddg=" in href:
                     parsed = parse_qs(urlparse(href).query)
                     href = parsed.get("uddg", [href])[0]
+                if "duckduckgo.com/y.js" in href or "ad_provider" in href or "bing.com/aclick" in href:
+                    continue
                 if href.startswith("http"):
                     all_results.append({
                         "title": a_link.get_text(strip=True),
@@ -591,6 +588,12 @@ class SearchEngine:
 
         web_results: List[Dict[str, Any]] = []
         try:
+            ddgs_items = fut_ddgs.result(timeout=7.0)
+            web_results.extend(ddgs_items)
+        except Exception as exc:
+            logger.warning("DDGS retrieval error: %s", exc)
+
+        try:
             html_items = fut_html.result(timeout=4.0)
             web_results.extend(html_items)
         except Exception as exc:
@@ -601,12 +604,6 @@ class SearchEngine:
             web_results.extend(lite_items)
         except Exception as exc:
             logger.warning("DDG Lite retrieval error: %s", exc)
-
-        try:
-            ddgs_items = fut_ddgs.result(timeout=7.0)
-            web_results.extend(ddgs_items)
-        except Exception as exc:
-            logger.warning("DDGS retrieval error: %s", exc)
 
         reddit_results: List[Dict[str, Any]] = []
         try:
@@ -628,7 +625,7 @@ class SearchEngine:
 
         # Domain Diversity & Host Collapsing
         is_reddit_query = "reddit" in original_query.lower()
-        max_reddit_allowed = 12 if is_reddit_query else 3
+        max_reddit_allowed = 12 if is_reddit_query else 2
 
         domain_counts: Dict[str, int] = {}
         seen_urls: set[str] = set()
@@ -644,6 +641,28 @@ class SearchEngine:
         reddit_inserted = 0
         web_inserted = 0
 
+        # Prepend verified official site navigational link if discovered via Instant Answers
+        if knowledge_panel and knowledge_panel.get("official_sites"):
+            for off_site in knowledge_panel["official_sites"]:
+                off_url = off_site.get("url", "")
+                if not off_url or off_url in seen_urls:
+                    continue
+                off_root = get_root_domain(off_url)
+                if domain_counts.get(off_root, 0) >= 1:
+                    continue
+                seen_urls.add(off_url)
+                domain_counts[off_root] = domain_counts.get(off_root, 0) + 1
+                off_display = urlparse(off_url).netloc.replace("www.", "").lower()
+                off_meta = extract_site_info(off_url, off_site.get("title", ""), off_site.get("snippet", ""))
+                blended_results.append({
+                    "url": off_url,
+                    "title": off_site.get("title", ""),
+                    "snippet": off_site.get("snippet", ""),
+                    "domain": off_display,
+                    **off_meta,
+                })
+                web_inserted += 1
+
         # Pass 1: Strict Domain Diversity (up to 2 per root domain)
         for r in web_results:
             url = r.get("href", "")
@@ -652,9 +671,6 @@ class SearchEngine:
 
             root_dom = get_root_domain(url)
             display_dom = urlparse(url).netloc.replace("www.", "").lower()
-
-            if any(spam in root_dom for spam in _BLOCKED_DOMAINS):
-                continue
 
             # Safe Search: strictly filter explicit/adult content if safe is True
             if safe and is_explicit_content(url, r.get("title", ""), r.get("body", "")):
@@ -700,8 +716,9 @@ class SearchEngine:
                 blended_results.append(saved_wiki_item)
                 saved_wiki_item = None
 
-            # Blend authentic Reddit discussion
-            if web_inserted % 3 == 0 and clean_reddit and reddit_inserted < max_reddit_allowed:
+            # Blend community Reddit discussion naturally without dominating
+            should_blend_reddit = (is_reddit_query and web_inserted % 3 == 0) or (clean_reddit and web_inserted == 4 and reddit_inserted == 0)
+            if should_blend_reddit and clean_reddit and reddit_inserted < max_reddit_allowed:
                 for red in clean_reddit:
                     r_url = red.get("href", "")
                     if r_url and r_url not in seen_urls and domain_counts.get("reddit.com", 0) < max_reddit_allowed:
@@ -733,8 +750,6 @@ class SearchEngine:
             root_dom = get_root_domain(url)
             display_dom = urlparse(url).netloc.replace("www.", "").lower()
             if root_dom == "wikipedia.org":
-                continue
-            if any(spam in root_dom for spam in _BLOCKED_DOMAINS):
                 continue
             if safe and is_explicit_content(url, r.get("title", ""), r.get("body", "")):
                 continue
