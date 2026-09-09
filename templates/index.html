@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
 <title>Light Search — Into the living web</title>
 <meta name="description" content="Search anything, anytime, anywhere safely. Fast, private, and secure search.">
 <link rel="icon" href="assets/logo.png">
@@ -1014,6 +1015,12 @@
     width:100%; height:calc(140 * var(--u)); object-fit:cover; display:block;
     background:#1c221a;
   }
+    .res-card-layout{ display:flex; gap:calc(16 * var(--u)); align-items:flex-start; }
+  .res-card-thumb-wrap{ position:relative; flex:none; width:calc(150 * var(--u)); height:calc(92 * var(--u)); border-radius:calc(10 * var(--u)); overflow:hidden; background:#1c221a; }
+  .res-card-thumb{ width:100%; height:100%; object-fit:cover; display:block; }
+  .res-video-badge{ position:absolute; bottom:calc(4 * var(--u)); right:calc(6 * var(--u)); background:rgba(0,0,0,.82); color:#fff; font-size:calc(11 * var(--u)); font-weight:600; padding:calc(2 * var(--u)) calc(5 * var(--u)); border-radius:calc(4 * var(--u)); }
+  .res-card-text{ flex:1; min-width:0; }
+  .res-img-thumb.img-failed{ opacity:.22; filter:grayscale(1); }
   .res-img-caption{
     padding:calc(8 * var(--u)) calc(10 * var(--u)); font-size:calc(11.5 * var(--u));
     color:rgba(255,255,255,.7); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
@@ -1721,6 +1728,15 @@
       font-size: 13.5px !important;
       line-height: 1.5 !important;
       color: rgba(255, 255, 255, 0.72) !important;
+    }
+        .res-card-layout {
+      flex-direction: column !important;
+      gap: 10px !important;
+    }
+    .res-card-thumb-wrap {
+      width: 100% !important;
+      height: 170px !important;
+      border-radius: 10px !important;
     }
     .res-grid-images {
       grid-template-columns: repeat(2, 1fr) !important;
@@ -5240,14 +5256,18 @@
         resCardsContainer.appendChild(grid);
       }
       results.forEach(function (item) {
-        var imgUrl = item.image_url || item.thumbnail_url || item.url;
+        var thumbSrc = item.thumbnail || item.thumbnail_url || item.image || item.image_url || '';
+        var fullSrc = item.image || item.image_url || item.thumbnail || item.thumbnail_url || '';
+        if (!thumbSrc && !fullSrc) return;
+
         var card = document.createElement('a');
         card.className = 'res-img-card';
-        card.href = item.url;
+        card.href = item.url || fullSrc;
         card.target = '_blank';
         card.rel = 'noopener noreferrer';
-        card.innerHTML = '<img class="res-img-thumb" src="' + escapeHtml(imgUrl) + '" alt="' + escapeHtml(item.title) + '" loading="lazy" onerror="this.src=\'assets/logo.png\'" />' +
-                         '<div class="res-img-caption">' + escapeHtml(item.title) + '</div>';
+        card.innerHTML =
+          '<img class="res-img-thumb" src="' + escapeHtml(thumbSrc) + '" alt="' + escapeHtml(item.title || 'Image') + '" loading="lazy" referrerpolicy="no-referrer" data-full="' + escapeHtml(fullSrc) + '" onerror="if(this.dataset.full && this.src !== this.dataset.full){this.src=this.dataset.full;}else{this.onerror=null;this.classList.add(\'img-failed\');}" />' +
+          '<div class="res-img-caption">' + escapeHtml(item.title || '') + '</div>';
         grid.appendChild(card);
       });
     } else {
@@ -5299,6 +5319,16 @@
         var faviconUrl = item.favicon_url || ('https://www.google.com/s2/favicons?domain=' + encodeURIComponent(item.domain || 'google.com') + '&sz=32');
         var siteName = item.site_name || item.domain || 'Website';
         var breadcrumb = item.breadcrumb || item.url || '';
+        var mediaThumb = (currentTab === 'videos' || item.is_video || currentTab === 'news') ? (item.thumbnail || item.image || item.thumbnail_url || item.image_url || '') : '';
+
+        var mediaHtml = '';
+        if (mediaThumb) {
+          mediaHtml =
+            '<div class="res-card-thumb-wrap">' +
+              '<img class="res-card-thumb" src="' + escapeHtml(mediaThumb) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.style.display=\'none\'" />' +
+              (item.duration ? ('<span class="res-video-badge">' + escapeHtml(item.duration) + '</span>') : '') +
+            '</div>';
+        }
 
         card.innerHTML =
           '<div class="res-card-domain">' +
@@ -5306,10 +5336,12 @@
             '<span class="res-card-sitename">' + escapeHtml(siteName) + '</span>' +
             '<span class="res-card-url">' + escapeHtml(breadcrumb) + '</span>' +
           '</div>' +
+          (mediaThumb ? ('<div class="res-card-layout">' + mediaHtml + '<div class="res-card-text">') : '') +
           '<h2 class="res-card-title">' +
             '<a href="' + escapeHtml(item.url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(item.title || item.url) + '</a>' +
           '</h2>' +
-          '<p class="res-card-snippet">' + highlightQuery(item.snippet || '', currentQuery) + '</p>';
+          '<p class="res-card-snippet">' + highlightQuery(item.snippet || '', currentQuery) + '</p>' +
+          (mediaThumb ? '</div></div>' : '');
 
         resCardsContainer.appendChild(card);
       });
