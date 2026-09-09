@@ -1,7 +1,5 @@
 # ⚡ Light Search Engine
 
-A state-of-the-art, privacy-focused search engine featuring an interactive **Three.js 3D particle universe**, **WebGL dispersion shaders**, **dynamic Safe Search toggling (SFW / NSFW)**, **predictive autocomplete**, and a dedicated **Knowledge Graph**.
-
 Built and maintained by **[Nishkarsh Shrivastava (szzsuke)](https://github.com/szzsuke)**.
 
 🌐 **Live Experience:** [**https://szzsuke.github.io/Light-Search-Engine/**](https://szzsuke.github.io/Light-Search-Engine/)
