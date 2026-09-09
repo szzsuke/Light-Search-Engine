@@ -10,6 +10,7 @@ Flask web application exposing:
 
 from __future__ import annotations
 
+import os
 from html import escape
 from typing import Any, Dict
 
@@ -19,7 +20,13 @@ from ddg_knowledge import get_instant_answer
 from reader import extract_clean_article
 from search_engine import search_engine
 
-app = Flask(__name__)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+app = Flask(
+    __name__,
+    template_folder=os.path.join(BASE_DIR, "templates"),
+    static_folder=os.path.join(BASE_DIR, "assets")
+)
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 
 
@@ -126,7 +133,7 @@ def index() -> Response | str:
 @app.route("/assets/<path:filename>", methods=["GET"])
 def serve_assets(filename: str) -> Response:
     """Serves static assets for the Light Search Engine frontend."""
-    return send_from_directory("assets", filename)
+    return send_from_directory(os.path.join(BASE_DIR, "assets"), filename)
 
 
 @app.route("/search", methods=["GET"])

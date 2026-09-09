@@ -1192,6 +1192,63 @@
     .res-sidebar-column{ width:100%; }
     .ghost{ font-size:calc(184 * var(--u)); letter-spacing:calc(14 * var(--u)); bottom:calc(660 * var(--u)); left:calc(-10 * var(--u)); }
   }
+
+  /* ── Mobile viewport (phones & small tablets) ── */
+  @media (max-width:640px){
+    :root{ --u: calc(100vw / 400); }
+    .stage{
+      width:calc(400 * var(--u)); height:calc(760 * var(--u));
+    }
+    .hero-brand{ left:calc(18 * var(--u)); top:calc(48 * var(--u)); }
+    .hero-logo{ height:calc(52 * var(--u)); }
+    .lede{ left:calc(18 * var(--u)); top:calc(120 * var(--u)); width:calc(350 * var(--u)); font-size:14.5px; line-height:21px; }
+    .pill-clip{
+      left:50%; top:calc(255 * var(--u));
+      width:calc(364 * var(--u)); height:calc(210 * var(--u));
+      margin:calc(-105 * var(--u)) 0 0 calc(-182 * var(--u));
+      clip-path:inset(calc(56 * var(--u)) calc(6 * var(--u)) calc(18 * var(--u)) calc(6 * var(--u)) round calc(44 * var(--u)));
+    }
+    .pill-input{ font-size:16px !important; }
+    .play-wrap{ left:calc(18 * var(--u)); top:calc(360 * var(--u)); width:calc(85 * var(--u)); height:calc(85 * var(--u)); }
+    .stat{ gap:calc(8 * var(--u)); }
+    .stat dt{ font-size:13px; line-height:18px; }
+    .stat dd{ font-size:13px; line-height:20px; }
+    .stat--a{ left:calc(115 * var(--u)); top:calc(365 * var(--u)); }
+    .stat--b{ left:calc(245 * var(--u)); top:calc(365 * var(--u)); }
+    .ghost{ display:none; }
+
+    /* Results layout on phone screens */
+    .res-header{ height:56px; padding:0 12px; gap:8px; }
+    .res-header-left{ gap:10px; }
+    .res-logo-img{ height:28px; }
+    .res-search-form{ height:38px; border-radius:19px; padding:0 10px; }
+    .res-search-icon{ width:15px; height:15px; margin-right:6px; }
+    .res-query-input{ font-size:15px; }
+    .res-tabs-bar{ padding:0 10px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    .res-tabs-wrap{ gap:2px; }
+    .res-tab{ padding:8px 10px; font-size:13px; white-space:nowrap; }
+    .res-scroll-container{ padding:12px 14px 48px; }
+    .res-card{
+      border-radius:14px;
+      padding:15px 16px;
+      margin-bottom:12px;
+    }
+    .res-card-domain{ font-size:12px; margin-bottom:4px; gap:6px; }
+    .res-card-favicon{ width:15px; height:15px; }
+    .res-card-title{ font-size:16px; line-height:22px; margin-bottom:5px; }
+    .res-card-snippet{ font-size:13.5px; line-height:19.5px; }
+    .res-kp-card{
+      border-radius:16px;
+      padding:16px;
+      margin-bottom:16px;
+    }
+    .res-kp-heading{ font-size:18px; line-height:24px; }
+    .res-kp-abstract{ font-size:13.5px; line-height:20px; }
+    .res-kp-facts{ gap:6px; }
+    .res-kp-fact{ font-size:12.5px; }
+    .res-footer-bar{ padding:12px 14px; font-size:12px; flex-direction:column; gap:8px; }
+    .safe-toggle-badge{ font-size:11.5px; padding:4px 8px; }
+  }
 </style>
 </head>
 <body>
