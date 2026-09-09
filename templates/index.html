@@ -4633,6 +4633,47 @@
         grid.appendChild(card);
       });
     } else {
+      if (offset === 0 && results.length === 0) {
+        var emptyCard = document.createElement('div');
+        emptyCard.className = 'res-card';
+        if (isSafeSearch) {
+          emptyCard.innerHTML =
+            '<div style="padding:10px 4px;">' +
+              '<div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">' +
+                '<span style="display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:50%; background:rgba(34,197,94,0.18); border:1px solid rgba(34,197,94,0.4); color:#4ade80; flex:none;">' +
+                  '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>' +
+                '</span>' +
+                '<div>' +
+                  '<h3 style="margin:0; font-size:17px; color:#fff; font-weight:500;">SafeSearch Filtered Explicit Content</h3>' +
+                  '<div style="font-size:12px; color:rgba(255,255,255,0.5); margin-top:2px;">Safe search mode is currently active</div>' +
+                '</div>' +
+              '</div>' +
+              '<p style="color:rgba(255,255,255,0.72); font-size:14px; line-height:22px; margin:0 0 16px 0;">' +
+                'SafeSearch is currently <strong>ON</strong> and has filtered out explicit adult/NSFW results for <em>"' + escapeHtml(currentQuery) + '"</em>.' +
+              '</p>' +
+              '<button type="button" id="safe-turn-off-btn" style="background:rgba(239,68,68,0.18); border:1px solid rgba(239,68,68,0.4); color:#fca5a5; padding:8px 18px; border-radius:20px; font-size:13px; font-family:inherit; cursor:pointer; display:inline-flex; align-items:center; gap:8px; transition:background .2s ease;">' +
+                '<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#ef4444;"></span>' +
+                '<span>Turn SafeSearch OFF to view unrestricted results</span>' +
+              '</button>' +
+            '</div>';
+          resCardsContainer.appendChild(emptyCard);
+          var turnOffBtn = document.getElementById('safe-turn-off-btn');
+          if (turnOffBtn) {
+            turnOffBtn.addEventListener('click', function () {
+              if (resSafeToggle) resSafeToggle.click();
+            });
+          }
+        } else {
+          emptyCard.innerHTML =
+            '<div style="padding:16px 6px; text-align:center;">' +
+              '<h3 style="margin:0 0 8px 0; font-size:18px; color:#fff; font-weight:400;">No results found for "' + escapeHtml(currentQuery) + '"</h3>' +
+              '<p style="color:rgba(255,255,255,0.6); font-size:14px; margin:0;">Check your spelling or try different keywords.</p>' +
+            '</div>';
+          resCardsContainer.appendChild(emptyCard);
+        }
+        return;
+      }
+
       results.forEach(function (item) {
         var card = document.createElement('article');
         card.className = 'res-card';

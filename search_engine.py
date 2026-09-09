@@ -48,6 +48,47 @@ _BLOCKED_DOMAINS = {
     "toptenreviews.com",
 }
 
+# Known explicit adult domains and keywords for SafeSearch enforcement
+_ADULT_DOMAINS = {
+    "pornhub", "xvideos", "xnxx", "xhamster", "redtube", "youporn",
+    "spankbang", "tube8", "chaturbate", "onlyfans", "camsoda", "stripchat",
+    "bongacams", "beeg", "eporner", "hqporner", "brazzers", "naughtyamerica",
+    "camwhores", "livejasmin", "erome", "rule34", "gelbooru", "danbooru",
+    "fakku", "nhentai", "hanime", "tnaflix", "heavy-r", "fapello", "sex.com"
+}
+
+_ADULT_KEYWORDS = [
+    "pornhub", "xvideos", "xnxx", "xhamster", "free porn", "porn video",
+    "porn videos", "xxx video", "xxx movies", "sex video", "hardcore porn",
+    "live sex", "adult webcam", "sex tube", "hd porn"
+]
+
+
+def is_explicit_content(url: str, title: str = "", body: str = "") -> bool:
+    """Detects if a URL, title, or body belongs to explicit/adult NSFW content."""
+    host = urlparse(url).netloc.lower()
+    for ad in _ADULT_DOMAINS:
+        if ad in host:
+            return True
+
+    text = (title + " " + body).lower()
+    for kw in _ADULT_KEYWORDS:
+        if kw in text:
+            return True
+    return False
+
+
+def is_explicit_query(query: str) -> bool:
+    """Detects if the user query itself is an adult/NSFW keyword."""
+    q = query.strip().lower()
+    for ad in _ADULT_DOMAINS:
+        if ad in q:
+            return True
+    for kw in ["porn", "porno", "xxx", "sex video", "nsfw", "hentai", "nudes"]:
+        if kw in q.split() or kw == q:
+            return True
+    return False
+
 # Known human-friendly site names
 _KNOWN_SITE_NAMES = {
     "reddit.com": "Reddit",
@@ -223,18 +264,59 @@ def _fetch_ddg_html_pages(query: str, max_pages: int = 3, safe: bool = True) -> 
     return all_results
 
 
+def _fetch_ddg_lite_pages(query: str, safe: bool = True) -> List[Dict[str, Any]]:
+    """Fetches continuous real results directly from DuckDuckGo Lite without rate limits or bot-blocks."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    s = requests.Session()
+    kp = "1" if safe else "-1"
+    all_results = []
+    try:
+        resp = s.post("https://lite.duckduckgo.com/lite/", data={"q": query, "kp": kp}, headers=headers, timeout=5)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tr in soup.select("table tr"):
+                a_link = tr.select_one("a.result-link")
+                if not a_link:
+                    continue
+                snippet_td = tr.find_next_sibling("tr")
+                snippet_text = ""
+                if snippet_td:
+                    s_el = snippet_td.select_one("td.result-snippet")
+                    if s_el:
+                        snippet_text = s_el.get_text(strip=True)
+                href = a_link.get("href", "")
+                if "uddg=" in href:
+                    parsed = parse_qs(urlparse(href).query)
+                    href = parsed.get("uddg", [href])[0]
+                if href.startswith("http"):
+                    all_results.append({
+                        "title": a_link.get_text(strip=True),
+                        "href": href,
+                        "body": snippet_text
+                    })
+    except Exception as exc:
+        logger.warning("DDG Lite scraper error for '%s': %s", query, exc)
+    return all_results
+
+
 def _safe_ddgs_search(query: str, max_results: int = 30, page: int = 1, safe: bool = True) -> List[Dict[str, Any]]:
-    """Fetches web results using direct fast backends with page parameter."""
+    """Fetches web results using direct fast backends."""
     ss_val = "moderate" if safe else "off"
     try:
-        results = list(DDGS(timeout=5).text(query, page=page, max_results=max_results, safesearch=ss_val))
+        if page > 1:
+            results = list(DDGS(timeout=8).text(query, page=page, max_results=max_results, safesearch=ss_val))
+        else:
+            results = list(DDGS(timeout=8).text(query, max_results=max_results, safesearch=ss_val))
         if results:
             return results
     except Exception as exc:
         logger.warning("Search error for '%s' (page %d): %s", query, page, exc)
 
     try:
-        return list(DDGS(timeout=4).text(query, max_results=max_results, safesearch=ss_val))
+        return list(DDGS(timeout=6).text(query, max_results=max_results, safesearch=ss_val))
     except Exception as exc:
         logger.warning("Fallback DDGS search error for '%s': %s", query, exc)
         return []
@@ -262,6 +344,8 @@ class SearchEngine:
                     "domain": host,
                     "favicon": f"https://www.google.com/s2/favicons?domain={host}&sz=64",
                 })
+            if safe:
+                results = [r for r in results if not is_explicit_content(r.get("url", ""), r.get("title", ""))]
             return results
         except Exception as exc:
             logger.warning("Image search error for '%s': %s", query, exc)
@@ -288,6 +372,8 @@ class SearchEngine:
                     "favicon": site_info["favicon"],
                     "domain": host,
                 })
+            if safe:
+                results = [r for r in results if not is_explicit_content(r.get("url", ""), r.get("title", ""), r.get("snippet", ""))]
             return results
         except Exception as exc:
             logger.warning("News search error for '%s': %s", query, exc)
@@ -345,6 +431,9 @@ class SearchEngine:
                     })
             except Exception as exc2:
                 logger.warning("YouTube fallback error: %s", exc2)
+
+        if safe:
+            results = [r for r in results if not is_explicit_content(r.get("url", ""), r.get("title", ""), r.get("snippet", ""))]
 
         return results
 
@@ -486,27 +575,34 @@ class SearchEngine:
         fut_kp = _EXECUTOR.submit(get_instant_answer, original_query)
         fut_spell = _EXECUTOR.submit(gemini_ai.spell_check, original_query)
         
-        # Concurrently fetch DuckDuckGo HTML deep pages + DDGS text search + Reddit
+        # Concurrently fetch DuckDuckGo HTML deep pages + DDG Lite + DDGS text search + Reddit
         fut_html = _EXECUTOR.submit(_fetch_ddg_html_pages, original_query, 3, safe)
+        fut_lite = _EXECUTOR.submit(_fetch_ddg_lite_pages, original_query, safe)
         fut_ddgs = _EXECUTOR.submit(_safe_ddgs_search, original_query, 25, 1, safe)
         fut_reddit = _EXECUTOR.submit(_safe_ddgs_search, f"{original_query} site:reddit.com", 15, 1, safe)
 
         web_results: List[Dict[str, Any]] = []
         try:
-            html_items = fut_html.result(timeout=6.0)
+            html_items = fut_html.result(timeout=4.0)
             web_results.extend(html_items)
         except Exception as exc:
             logger.warning("DDG HTML retrieval error: %s", exc)
 
         try:
-            ddgs_items = fut_ddgs.result(timeout=4.5)
+            lite_items = fut_lite.result(timeout=4.0)
+            web_results.extend(lite_items)
+        except Exception as exc:
+            logger.warning("DDG Lite retrieval error: %s", exc)
+
+        try:
+            ddgs_items = fut_ddgs.result(timeout=7.0)
             web_results.extend(ddgs_items)
         except Exception as exc:
             logger.warning("DDGS retrieval error: %s", exc)
 
         reddit_results: List[Dict[str, Any]] = []
         try:
-            reddit_results = fut_reddit.result(timeout=4.5)
+            reddit_results = fut_reddit.result(timeout=6.0)
         except Exception as exc:
             logger.warning("Reddit retrieval error: %s", exc)
 
@@ -552,9 +648,13 @@ class SearchEngine:
             if any(spam in root_dom for spam in _BLOCKED_DOMAINS):
                 continue
 
+            # Safe Search: strictly filter explicit/adult content if safe is True
+            if safe and is_explicit_content(url, r.get("title", ""), r.get("body", "")):
+                continue
+
             # Wikipedia deduplication logic
             if root_dom == "wikipedia.org":
-                if knowledge_panel is not None:
+                if knowledge_panel is not None and len(blended_results) > 0:
                     continue
                 elif saved_wiki_item is None:
                     site_meta = extract_site_info(url, r.get("title", ""), r.get("body", ""))
@@ -610,8 +710,8 @@ class SearchEngine:
                         reddit_inserted += 1
                         break
 
-        # Append saved wiki if still held
-        if saved_wiki_item and knowledge_panel is None:
+        # Append saved wiki if still held or if no other results were found
+        if saved_wiki_item and (knowledge_panel is None or len(blended_results) == 0):
             blended_results.append(saved_wiki_item)
             saved_wiki_item = None
 
@@ -627,6 +727,8 @@ class SearchEngine:
             if root_dom == "wikipedia.org":
                 continue
             if any(spam in root_dom for spam in _BLOCKED_DOMAINS):
+                continue
+            if safe and is_explicit_content(url, r.get("title", ""), r.get("body", "")):
                 continue
             if domain_counts.get(root_dom, 0) < 4:
                 seen_urls.add(url)
