@@ -2,8 +2,16 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/index.py",
-      "use": "@vercel/python"
+      "src": "app.py",
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": [
+          "templates/**",
+          "assets/**",
+          "index.html",
+          "*.py"
+        ]
+      }
     }
   ],
   "routes": [
@@ -13,7 +21,7 @@
     },
     {
       "src": "/(.*)",
-      "dest": "/api/index.py"
+      "dest": "app.py"
     }
   ]
 }

@@ -127,6 +127,13 @@ def render_page(search_result: Dict[str, Any] | None = None) -> str:
 @app.route("/", methods=["GET"])
 def index() -> Response | str:
     """Serves the interactive GPU particle loop frontend."""
+    template_path = os.path.join(BASE_DIR, "templates", "index.html")
+    if os.path.exists(template_path):
+        return render_template("index.html")
+    root_index = os.path.join(BASE_DIR, "index.html")
+    if os.path.exists(root_index):
+        with open(root_index, "r", encoding="utf-8") as f:
+            return f.read(), 200, {"Content-Type": "text/html; charset=utf-8"}
     return render_template("index.html")
 
 
