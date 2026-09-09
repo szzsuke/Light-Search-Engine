@@ -1004,6 +1004,48 @@
   }
   .res-card-snippet strong{ color:#fff; font-weight:500; }
 
+  /* Sitelinks Grid (DuckDuckGo style) */
+  .res-sitelinks-grid{
+    display:grid; grid-template-columns:repeat(2, 1fr);
+    gap:calc(10 * var(--u)); margin-top:calc(12 * var(--u));
+    padding-top:calc(10 * var(--u)); border-top:1px solid rgba(255,255,255,.07);
+  }
+  .res-sitelink-card{
+    background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.06);
+    border-radius:calc(10 * var(--u)); padding:calc(8 * var(--u)) calc(12 * var(--u));
+    transition:background .18s ease, border-color .18s ease;
+  }
+  .res-sitelink-card:hover{
+    background:rgba(255,255,255,.07); border-color:rgba(217,249,157,.3);
+  }
+  .res-sitelink-title{
+    font-size:calc(13.5 * var(--u)); font-weight:500; color:#d9f99d;
+    text-decoration:none; display:block; margin-bottom:calc(3 * var(--u));
+  }
+  .res-sitelink-title:hover{ text-decoration:underline; }
+  .res-sitelink-desc{
+    font-size:calc(12 * var(--u)); line-height:1.4;
+    color:rgba(255,255,255,.6); margin:0;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+    overflow:hidden; text-overflow:ellipsis;
+  }
+
+  /* Knowledge Panel DuckDuckGo enhancements */
+  .res-kp-subtitle{
+    font-size:calc(13 * var(--u)); color:rgba(255,255,255,.65);
+    margin-top:calc(-2 * var(--u)); margin-bottom:calc(6 * var(--u)); line-height:1.35;
+  }
+  .res-kp-official-link{
+    display:inline-flex; align-items:center; gap:calc(4 * var(--u));
+    font-size:calc(12.5 * var(--u)); font-weight:500; color:#d9f99d;
+    text-decoration:none; margin-bottom:calc(8 * var(--u));
+  }
+  .res-kp-official-link:hover{ text-decoration:underline; }
+  .res-kp-quicklinks-title{
+    font-size:calc(11.5 * var(--u)); text-transform:uppercase; letter-spacing:.06em;
+    color:rgba(255,255,255,.45); margin-top:calc(14 * var(--u)); margin-bottom:calc(8 * var(--u)); font-weight:600;
+  }
+
   /* Gallery grid for Images Tab */
   .res-grid-images{
     display:grid; grid-template-columns:repeat(auto-fill, minmax(calc(180 * var(--u)), 1fr));
@@ -1741,7 +1783,11 @@
       text-overflow: ellipsis !important;
       word-break: break-word !important;
     }
-        .res-card-layout {
+    .res-sitelinks-grid {
+      grid-template-columns: 1fr !important;
+      gap: 8px !important;
+    }
+    .res-card-layout {
       flex-direction: column !important;
       gap: 10px !important;
     }
@@ -5191,6 +5237,10 @@
         return res.json();
       })
       .then(function (data) {
+        if (data && data.redirect_url) {
+          window.location.href = data.redirect_url;
+          return;
+        }
         var elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
         renderSearchResults(data, offset, elapsed);
       })
@@ -5199,6 +5249,10 @@
         fetch('/api/search?q=' + encodeURIComponent(query) + '&tab=' + encodeURIComponent(tab) + '&offset=' + offset + '&limit=10&safe=' + (isSafeSearch ? '1' : '0'))
           .then(function (res) { return res.json(); })
           .then(function (data) {
+            if (data && data.redirect_url) {
+              window.location.href = data.redirect_url;
+              return;
+            }
             var elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
             renderSearchResults(data, offset, elapsed);
           })
@@ -5342,6 +5396,18 @@
             '</div>';
         }
 
+        var sitelinksHtml = '';
+        if (item.sitelinks && item.sitelinks.length > 0) {
+          sitelinksHtml = '<div class="res-sitelinks-grid">' +
+            item.sitelinks.map(function (sl) {
+              return '<div class="res-sitelink-card">' +
+                '<a class="res-sitelink-title" href="' + escapeHtml(sl.url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(sl.title) + '</a>' +
+                (sl.snippet || sl.desc ? ('<p class="res-sitelink-desc">' + escapeHtml(sl.snippet || sl.desc) + '</p>') : '') +
+              '</div>';
+            }).join('') +
+          '</div>';
+        }
+
         card.innerHTML =
           '<div class="res-card-domain">' +
             '<img class="res-card-favicon" src="' + escapeHtml(faviconUrl) + '" alt="" onerror="this.style.display=\'none\'" />' +
@@ -5353,6 +5419,7 @@
             '<a href="' + escapeHtml(item.url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(item.title || item.url) + '</a>' +
           '</h2>' +
           '<p class="res-card-snippet">' + highlightQuery(item.snippet || '', currentQuery) + '</p>' +
+          sitelinksHtml +
           (mediaThumb ? '</div></div>' : '');
 
         resCardsContainer.appendChild(card);
@@ -5458,6 +5525,18 @@
     if (type.indexOf('insta') !== -1) {
       return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>';
     }
+    if (type.indexOf('you') !== -1 || type.indexOf('yt') !== -1) {
+      return '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>';
+    }
+    if (type.indexOf('face') !== -1 || type.indexOf('fb') !== -1) {
+      return '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>';
+    }
+    if (type.indexOf('wiki') !== -1) {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>';
+    }
+    if (type.indexOf('globe') !== -1 || type.indexOf('web') !== -1 || type.indexOf('site') !== -1) {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
+    }
     if (type.indexOf('box') !== -1 || type.indexOf('sketch') !== -1) {
       return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>';
     }
@@ -5540,9 +5619,30 @@
       var srcHtml = kp.source ? '<a class="res-kp-source" href="' + escapeHtml(kp.source_url || '#') + '" target="_blank" rel="noopener noreferrer">Source: ' + escapeHtml(kp.source) + ' ↗</a>' : '';
 
       html += imgHtml +
-              '<h3 class="res-kp-heading">' + escapeHtml(kp.heading || '') + '</h3>' +
-              srcHtml +
+              '<h3 class="res-kp-heading">' + escapeHtml(kp.heading || '') + '</h3>';
+
+      if (kp.subtitle) {
+        html += '<div class="res-kp-subtitle">' + escapeHtml(kp.subtitle) + '</div>';
+      }
+
+      if (kp.official_url) {
+        html += '<a class="res-kp-official-link" href="' + escapeHtml(kp.official_url) + '" target="_blank" rel="noopener noreferrer">' +
+                getSocialSvgIcon('globe') + ' <span>' + escapeHtml(kp.official_url.replace(/^https?:\/\//, '').replace(/\/$/, '')) + '</span> ↗</a>';
+      }
+
+      html += srcHtml +
               '<p class="res-kp-abstract">' + escapeHtml(kp.abstract || '') + '</p>';
+
+      if (kp.quick_links && kp.quick_links.length > 0) {
+        html += '<div class="res-kp-quicklinks-title">Quick Links</div>';
+        html += '<div class="res-kp-socials">';
+        kp.quick_links.forEach(function (ql) {
+          var iconSvg = getSocialSvgIcon(ql.icon || ql.name);
+          html += '<a class="res-kp-social-btn" href="' + escapeHtml(ql.url) + '" target="_blank" rel="noopener noreferrer">' +
+                  iconSvg + '<span>' + escapeHtml(ql.name) + '</span></a>';
+        });
+        html += '</div>';
+      }
 
       if (kp.infobox && typeof kp.infobox === 'object') {
         html += '<div class="res-kp-facts">';

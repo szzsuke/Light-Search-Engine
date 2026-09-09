@@ -27,8 +27,49 @@ from bs4 import BeautifulSoup
 from ddgs import DDGS
 
 import config
-from ddg_knowledge import get_instant_answer
+from ddg_knowledge import get_instant_answer, resolve_bang
 from gemini_ai import gemini_ai
+
+# Sitelinks for premier navigational web destinations (like DuckDuckGo / Google)
+_BRAND_SITELINKS: Dict[str, List[Dict[str, str]]] = {
+    "youtube.com": [
+        {"title": "Music", "url": "https://music.youtube.com/", "snippet": "A new music service with official albums, singles, and remixes."},
+        {"title": "Trending", "url": "https://www.youtube.com/feed/trending", "snippet": "See what the world is watching, from gaming to news."},
+        {"title": "Subscriptions", "url": "https://www.youtube.com/feed/subscriptions", "snippet": "Discover the newest videos from channels you follow."},
+        {"title": "YouTube Studio", "url": "https://studio.youtube.com/", "snippet": "Manage your channel, analytics, and uploads."},
+    ],
+    "pinterest.com": [
+        {"title": "Ideas", "url": "https://www.pinterest.com/ideas/", "snippet": "Discover recipes, home design ideas, and style inspiration."},
+        {"title": "Log In", "url": "https://www.pinterest.com/login/", "snippet": "Sign in to access your saved pins and boards."},
+        {"title": "Today", "url": "https://www.pinterest.com/today/", "snippet": "Daily curated trends, inspiration, and articles."},
+        {"title": "Business", "url": "https://business.pinterest.com/", "snippet": "Grow your audience and brand on Pinterest."},
+    ],
+    "github.com": [
+        {"title": "Explore", "url": "https://github.com/explore", "snippet": "Discover interesting projects, topics, and collections."},
+        {"title": "Trending", "url": "https://github.com/trending", "snippet": "See what the GitHub community is most excited about today."},
+        {"title": "Pricing", "url": "https://github.com/pricing", "snippet": "Plans and features for teams and individual developers."},
+        {"title": "Sign In", "url": "https://github.com/login", "snippet": "Sign in to your GitHub account and repositories."},
+    ],
+    "reddit.com": [
+        {"title": "Popular", "url": "https://www.reddit.com/r/popular/", "snippet": "The most upvoted and active posts across all of Reddit."},
+        {"title": "All", "url": "https://www.reddit.com/r/all/", "snippet": "Unfiltered feed of every active community on Reddit."},
+        {"title": "Communities", "url": "https://www.reddit.com/best/communities/", "snippet": "Browse top communities by topic and interest."},
+    ],
+    "netflix.com": [
+        {"title": "Browse", "url": "https://www.netflix.com/browse", "snippet": "Watch TV shows, movies, documentaries, and originals."},
+        {"title": "Login", "url": "https://www.netflix.com/login", "snippet": "Sign in to watch instantly on any device."},
+        {"title": "Plans", "url": "https://www.netflix.com/signup", "snippet": "Choose the membership plan that's right for you."},
+    ],
+    "spotify.com": [
+        {"title": "Web Player", "url": "https://open.spotify.com/", "snippet": "Listen to millions of songs and podcasts in your browser."},
+        {"title": "Download", "url": "https://www.spotify.com/download/", "snippet": "Download Spotify for desktop and mobile devices."},
+        {"title": "Premium", "url": "https://www.spotify.com/premium/", "snippet": "Get ad-free music, offline listening, and unlimited skips."},
+    ],
+    "wikipedia.org": [
+        {"title": "Main Page", "url": "https://en.wikipedia.org/wiki/Main_Page", "snippet": "Today's featured article, current events, and portal directory."},
+        {"title": "Current Events", "url": "https://en.wikipedia.org/wiki/Portal:Current_events", "snippet": "Latest breaking global news and historical developments."},
+    ],
+}
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -474,6 +515,26 @@ class SearchEngine:
                 "results": [],
             }
 
+        # Check for DuckDuckGo !bangs
+        q_strip = original_query.strip()
+        if q_strip.startswith("!") or " !" in q_strip:
+            bang_redirect = resolve_bang(q_strip)
+            if bang_redirect:
+                return {
+                    "redirect_url": bang_redirect,
+                    "original_query": original_query,
+                    "corrected_query": original_query,
+                    "ai_summary": "",
+                    "knowledge_panel": None,
+                    "mode": mode_clean,
+                    "total_results": 0,
+                    "offset": 0,
+                    "limit": limit,
+                    "has_more": False,
+                    "safe": safe,
+                    "results": [],
+                }
+
         # Check Cache
         cached = _get_from_cache(original_query, mode_clean, safe=safe)
         if cached:
@@ -642,14 +703,16 @@ class SearchEngine:
                 if domain_counts.get(off_root, 0) >= 1:
                     continue
                 seen_urls.add(off_url)
-                domain_counts[off_root] = domain_counts.get(off_root, 0) + 1
+                domain_counts[off_root] = 2  # Disallow immediate duplicate homepages in Pass 1
                 off_display = urlparse(off_url).netloc.replace("www.", "").lower()
                 off_meta = extract_site_info(off_url, off_site.get("title", ""), off_site.get("snippet", ""))
+                sitelinks = _BRAND_SITELINKS.get(off_root, [])
                 blended_results.append({
                     "url": off_url,
                     "title": off_site.get("title", ""),
                     "snippet": clean_snippet(off_site.get("snippet", ""), 210),
                     "domain": off_display,
+                    "sitelinks": sitelinks,
                     **off_meta,
                 })
 
@@ -666,6 +729,12 @@ class SearchEngine:
             if safe and is_explicit_content(url, r.get("title", ""), r.get("body", "")):
                 continue
 
+            # Prevent encyclopedia duplication (never show Grokipedia and Wikipedia together)
+            if root_dom == "grokipedia.com" and domain_counts.get("wikipedia.org", 0) >= 1:
+                continue
+            if root_dom == "wikipedia.org" and domain_counts.get("grokipedia.com", 0) >= 1:
+                continue
+
             current_count = domain_counts.get(root_dom, 0)
             domain_limit = 1 if root_dom in {"wikipedia.org", "grokipedia.com"} else 2
             if current_count >= domain_limit:
@@ -678,11 +747,15 @@ class SearchEngine:
             domain_counts[root_dom] = current_count + 1
             site_meta = extract_site_info(url, r.get("title", ""), raw_body)
 
+            # If this is the #1 result overall and has known sitelinks, attach them
+            sitelinks = _BRAND_SITELINKS.get(root_dom, []) if len(blended_results) == 0 else []
+
             blended_results.append({
                 "url": url,
                 "title": r.get("title", ""),
                 "snippet": cleaned_snip,
                 "domain": display_dom,
+                "sitelinks": sitelinks,
                 **site_meta,
             })
 

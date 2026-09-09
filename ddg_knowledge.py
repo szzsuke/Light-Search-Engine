@@ -63,15 +63,67 @@ def _get_creator_knowledge_panel() -> Dict[str, Any]:
     }
 
 
+COMMON_BANGS = {
+    "!w": "https://en.wikipedia.org/wiki/Special:Search?search={}",
+    "!wiki": "https://en.wikipedia.org/wiki/Special:Search?search={}",
+    "!yt": "https://www.youtube.com/results?search_query={}",
+    "!youtube": "https://www.youtube.com/results?search_query={}",
+    "!g": "https://www.google.com/search?q={}",
+    "!google": "https://www.google.com/search?q={}",
+    "!gh": "https://github.com/search?q={}",
+    "!github": "https://github.com/search?q={}",
+    "!r": "https://www.reddit.com/search/?q={}",
+    "!reddit": "https://www.reddit.com/search/?q={}",
+    "!a": "https://www.amazon.com/s?k={}",
+    "!amazon": "https://www.amazon.com/s?k={}",
+    "!m": "https://www.google.com/maps/search/{}",
+    "!maps": "https://www.google.com/maps/search/{}",
+    "!tw": "https://twitter.com/search?q={}",
+    "!twitter": "https://twitter.com/search?q={}",
+    "!x": "https://x.com/search?q={}",
+    "!so": "https://stackoverflow.com/search?q={}",
+    "!imdb": "https://www.imdb.com/find?q={}",
+    "!sp": "https://open.spotify.com/search/{}",
+    "!spotify": "https://open.spotify.com/search/{}",
+    "!ddg": "https://duckduckgo.com/?q={}",
+}
+
+
+def resolve_bang(query: str) -> Optional[str]:
+    """Resolves DuckDuckGo !bang shortcuts natively, with live DDG 303 fallback."""
+    if not query:
+        return None
+    tokens = query.strip().split()
+    bang_token = None
+    remaining_tokens = []
+    for t in tokens:
+        if t.startswith("!") and len(t) > 1 and not bang_token:
+            bang_token = t.lower()
+        else:
+            remaining_tokens.append(t)
+
+    if not bang_token:
+        return None
+
+    clean_q = requests.utils.quote(" ".join(remaining_tokens))
+    # 1. Fast local dictionary lookup for instant speed
+    if bang_token in COMMON_BANGS:
+        template = COMMON_BANGS[bang_token]
+        return template.format(clean_q)
+
+    # 2. Live DuckDuckGo API 303 redirect lookup for all other 13,000+ bangs
+    try:
+        url = f"https://api.duckduckgo.com/?q={requests.utils.quote(query)}&format=json"
+        res = requests.get(url, allow_redirects=False, timeout=2.5)
+        if res.status_code in (301, 302, 303, 307) and "Location" in res.headers:
+            return res.headers["Location"]
+    except Exception:
+        pass
+    return None
+
+
 def get_instant_answer(query: str) -> Optional[Dict[str, Any]]:
-    """Queries DuckDuckGo's Instant Answer API for encyclopedic entity data.
-
-    Args:
-        query: User search query string.
-
-    Returns:
-        Structured knowledge dictionary, or None if no entity is matched.
-    """
+    """Queries DuckDuckGo's Instant Answer API for encyclopedic entity data."""
     if not query or len(query.strip()) < 2:
         return None
 
@@ -116,7 +168,6 @@ def get_instant_answer(query: str) -> Optional[Dict[str, Any]]:
         for topic in data.get("RelatedTopics", []):
             if isinstance(topic, dict) and topic.get("Text"):
                 text = topic.get("Text", "").strip()
-                # DuckDuckGo related topics format: "Name - Description"
                 name = text.split(" - ")[0] if " - " in text else text[:30]
                 node_url = topic.get("FirstURL", "")
                 icon = topic.get("Icon", {}).get("URL", "")
@@ -139,6 +190,9 @@ def get_instant_answer(query: str) -> Optional[Dict[str, Any]]:
                 if isinstance(item, dict) and item.get("label") and item.get("value"):
                     infobox_data[item["label"]] = str(item["value"])
 
+        # Extract DuckDuckGo Subtitle (Wikidata description or Entity)
+        subtitle = infobox_data.get("Wikidata description") or data.get("Entity") or ""
+
         # Extract official / direct website results if available
         official_sites = []
         for res_item in data.get("Results", []):
@@ -151,16 +205,54 @@ def get_instant_answer(query: str) -> Optional[Dict[str, Any]]:
                     "snippet": f"Official website for {heading or query.title()}.",
                 })
 
+        official_url = ""
+        if official_sites:
+            official_url = official_sites[0]["url"]
+        elif infobox_data.get("Official Website"):
+            official_url = infobox_data["Official Website"].strip("[]")
+        elif infobox_data.get("Website"):
+            raw_w = infobox_data["Website"].strip("[]")
+            official_url = raw_w if raw_w.startswith("http") else f"https://{raw_w}"
+
+        # Build DuckDuckGo-style Quick Links pills
+        quick_links = []
+        if official_url:
+            quick_links.append({"name": "Website", "url": official_url, "icon": "globe"})
+        wiki_url = data.get("AbstractURL")
+        if wiki_url and "wikipedia.org" in wiki_url:
+            quick_links.append({"name": "Wikipedia", "url": wiki_url, "icon": "wikipedia"})
+        if "Instagram profile" in infobox_data:
+            handle = infobox_data["Instagram profile"].strip("[]")
+            quick_links.append({"name": "Instagram", "url": f"https://instagram.com/{handle}", "icon": "instagram"})
+        if "Facebook profile" in infobox_data:
+            handle = infobox_data["Facebook profile"].strip("[]")
+            quick_links.append({"name": "Facebook", "url": f"https://facebook.com/{handle}", "icon": "facebook"})
+        if "Youtube channel" in infobox_data:
+            ch = infobox_data["Youtube channel"].strip("[]")
+            quick_links.append({"name": "YouTube", "url": f"https://youtube.com/channel/{ch}", "icon": "youtube"})
+        if "GitHub profile" in infobox_data:
+            gh = infobox_data["GitHub profile"].strip("[]")
+            quick_links.append({"name": "GitHub", "url": f"https://github.com/{gh}", "icon": "github"})
+        if "Twitter profile" in infobox_data:
+            tw = infobox_data["Twitter profile"].strip("[]")
+            quick_links.append({"name": "X", "url": f"https://x.com/{tw}", "icon": "twitter"})
+
         return {
             "heading": heading or query.title(),
+            "subtitle": subtitle,
+            "official_url": official_url,
             "abstract": abstract,
             "image_url": image_url,
             "source": data.get("AbstractSource", "DuckDuckGo & Wikipedia"),
             "source_url": data.get("AbstractURL", ""),
             "entity_type": data.get("Entity", ""),
+            "quick_links": quick_links,
             "related_nodes": related_nodes,
             "infobox": infobox_data,
             "official_sites": official_sites,
+            "answer": data.get("Answer", ""),
+            "answer_type": data.get("AnswerType", ""),
+            "definition": data.get("Definition", ""),
         }
 
     except Exception as exc:
