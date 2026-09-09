@@ -4115,6 +4115,9 @@
       var params = new URLSearchParams(window.location.search);
       if (params.get('api')) return params.get('api').replace(/\/+$/, '');
       if (window.LIGHT_API_HOST) return window.LIGHT_API_HOST.replace(/\/+$/, '');
+      if (window.location.hostname.indexOf('github.io') !== -1) {
+        return 'https://szzsuke00.pythonanywhere.com';
+      }
       if (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') {
         return window.location.port ? window.location.origin : 'http://127.0.0.1:5000';
       }
