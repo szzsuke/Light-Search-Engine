@@ -68,7 +68,7 @@ def render_page(search_result: Dict[str, Any] | None = None) -> str:
             kp_url = escape(kp.get("source_url", ""))
 
             img_tag = f'<p><img src="{kp_img}" alt="{kp_heading}"></p>' if kp_img else ""
-            source_link = f'<p><a href="{kp_url}" target="_blank" rel="noopener noreferrer">Source: {kp_source}</a></p>' if kp_url else ""
+            source_link = f'<p><a href="{kp_url}" rel="noopener noreferrer">Source: {kp_source}</a></p>' if kp_url else ""
 
             knowledge_html = f"""
             <aside>
@@ -92,8 +92,8 @@ def render_page(search_result: Dict[str, Any] | None = None) -> str:
 
                 items_html += f"""
                 <li>
-                    <h3><a href="{url_escaped}" target="_blank" rel="noopener noreferrer">{title_escaped}</a></h3>
-                    <small>{domain_escaped} - <a href="{url_escaped}" target="_blank" rel="noopener noreferrer">{url_escaped}</a></small>
+                    <h3><a href="{url_escaped}" rel="noopener noreferrer">{title_escaped}</a></h3>
+                    <small>{domain_escaped} - <a href="{url_escaped}" rel="noopener noreferrer">{url_escaped}</a></small>
                     <p>{snippet_escaped}</p>
                 </li>
                 """

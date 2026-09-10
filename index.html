@@ -5329,7 +5329,6 @@
         var card = document.createElement('a');
         card.className = 'res-img-card';
         card.href = item.url || fullSrc;
-        card.target = '_blank';
         card.rel = 'noopener noreferrer';
         card.innerHTML =
           '<img class="res-img-thumb" src="' + escapeHtml(thumbSrc) + '" alt="' + escapeHtml(item.title || 'Image') + '" loading="lazy" referrerpolicy="no-referrer" data-full="' + escapeHtml(fullSrc) + '" onerror="if(this.dataset.full && this.src !== this.dataset.full){this.src=this.dataset.full;}else{this.onerror=null;this.classList.add(\'img-failed\');}" />' +
@@ -5401,7 +5400,7 @@
           sitelinksHtml = '<div class="res-sitelinks-grid">' +
             item.sitelinks.map(function (sl) {
               return '<div class="res-sitelink-card">' +
-                '<a class="res-sitelink-title" href="' + escapeHtml(sl.url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(sl.title) + '</a>' +
+                '<a class="res-sitelink-title" href="' + escapeHtml(sl.url) + '" rel="noopener noreferrer">' + escapeHtml(sl.title) + '</a>' +
                 (sl.snippet || sl.desc ? ('<p class="res-sitelink-desc">' + escapeHtml(sl.snippet || sl.desc) + '</p>') : '') +
               '</div>';
             }).join('') +
@@ -5416,7 +5415,7 @@
           '</div>' +
           (mediaThumb ? ('<div class="res-card-layout">' + mediaHtml + '<div class="res-card-text">') : '') +
           '<h2 class="res-card-title">' +
-            '<a href="' + escapeHtml(item.url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(item.title || item.url) + '</a>' +
+            '<a href="' + escapeHtml(item.url) + '" rel="noopener noreferrer">' + escapeHtml(item.title || item.url) + '</a>' +
           '</h2>' +
           '<p class="res-card-snippet">' + highlightQuery(item.snippet || '', currentQuery) + '</p>' +
           sitelinksHtml +
@@ -5572,7 +5571,7 @@
         html += '    <div class="res-kp-handle">' + escapeHtml(kp.handle) + '</div>';
       }
       if (kp.source) {
-        html += '    <a class="res-kp-source" href="' + escapeHtml(kp.source_url || 'https://github.com/szzsuke') + '" target="_blank" rel="noopener noreferrer">Source: ' + escapeHtml(kp.source) + ' ↗</a>';
+        html += '    <a class="res-kp-source" href="' + escapeHtml(kp.source_url || 'https://github.com/szzsuke') + '" rel="noopener noreferrer">Source: ' + escapeHtml(kp.source) + ' ↗</a>';
       }
       html += '  </div>';
       html += '</div>';
@@ -5609,14 +5608,14 @@
       html += '<div class="res-kp-socials">';
       socials.forEach(function (s) {
         var iconSvg = getSocialSvgIcon(s.icon || s.name);
-        html += '<a class="res-kp-social-btn" href="' + escapeHtml(s.url) + '" target="_blank" rel="noopener noreferrer">' +
+        html += '<a class="res-kp-social-btn" href="' + escapeHtml(s.url) + '" rel="noopener noreferrer">' +
                 iconSvg + '<span>' + escapeHtml(s.name) + '</span></a>';
       });
       html += '</div>';
 
     } else {
       var imgHtml = kp.image_url ? '<img class="res-kp-img" src="' + escapeHtml(kp.image_url) + '" alt="' + escapeHtml(kp.heading) + '" />' : '';
-      var srcHtml = kp.source ? '<a class="res-kp-source" href="' + escapeHtml(kp.source_url || '#') + '" target="_blank" rel="noopener noreferrer">Source: ' + escapeHtml(kp.source) + ' ↗</a>' : '';
+      var srcHtml = kp.source ? '<a class="res-kp-source" href="' + escapeHtml(kp.source_url || '#') + '" rel="noopener noreferrer">Source: ' + escapeHtml(kp.source) + ' ↗</a>' : '';
 
       html += imgHtml +
               '<h3 class="res-kp-heading">' + escapeHtml(kp.heading || '') + '</h3>';
@@ -5626,7 +5625,7 @@
       }
 
       if (kp.official_url) {
-        html += '<a class="res-kp-official-link" href="' + escapeHtml(kp.official_url) + '" target="_blank" rel="noopener noreferrer">' +
+        html += '<a class="res-kp-official-link" href="' + escapeHtml(kp.official_url) + '" rel="noopener noreferrer">' +
                 getSocialSvgIcon('globe') + ' <span>' + escapeHtml(kp.official_url.replace(/^https?:\/\//, '').replace(/\/$/, '')) + '</span> ↗</a>';
       }
 
@@ -5638,7 +5637,7 @@
         html += '<div class="res-kp-socials">';
         kp.quick_links.forEach(function (ql) {
           var iconSvg = getSocialSvgIcon(ql.icon || ql.name);
-          html += '<a class="res-kp-social-btn" href="' + escapeHtml(ql.url) + '" target="_blank" rel="noopener noreferrer">' +
+          html += '<a class="res-kp-social-btn" href="' + escapeHtml(ql.url) + '" rel="noopener noreferrer">' +
                   iconSvg + '<span>' + escapeHtml(ql.name) + '</span></a>';
         });
         html += '</div>';
