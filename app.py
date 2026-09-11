@@ -40,7 +40,7 @@ def add_cors_headers(response: Response) -> Response:
 
 @app.route("/favicon.ico")
 def favicon() -> Response:
-    return Response(status=204)
+    return send_from_directory(BASE_DIR, "favicon.ico", mimetype="image/x-icon")
 
 
 def render_page(search_result: Dict[str, Any] | None = None) -> str:
@@ -110,6 +110,11 @@ def render_page(search_result: Dict[str, Any] | None = None) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="referrer" content="no-referrer">
   <title>{query_value + " - " if query_value else ""}Search</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/logo.png?v=2">
+  <link rel="icon" type="image/png" sizes="16x16" href="/assets/logo.png?v=2">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/logo.png?v=2">
+  <meta property="og:image" content="/assets/logo.png?v=2">
 </head>
 <body>
   <h1><a href="/">Search</a></h1>
